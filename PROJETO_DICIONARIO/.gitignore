@@ -1,0 +1,12 @@
+#pastas de IDES, editores
+.DS_Store
+.vscode/
+
+#compilador windows
+*.ilk
+
+#ficheiros gerados pelo compilador
+*.exe
+*.obj
+*.pdb
+
