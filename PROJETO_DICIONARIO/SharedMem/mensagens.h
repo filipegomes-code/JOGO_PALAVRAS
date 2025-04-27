@@ -8,7 +8,7 @@
 typedef struct
 {
     char tipo[20];
-    char username[20];
+    char username[30];
 } mensagem;
 
 
