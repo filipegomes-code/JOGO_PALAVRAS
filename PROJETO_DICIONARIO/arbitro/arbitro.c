@@ -6,6 +6,8 @@
 #include <windows.h>
 #include "../SharedMem/mensagens.h"
 
+#define MAX_PLAYER 3
+
 void warnsAll(char* tipo, char* username){
     if( strcmp(tipo , TIPO_ENTRAR) == 0){
         printf("jogador %s entrou no Jogo\n", username);
@@ -57,8 +59,16 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
 int main(){
     //mensagem msg;
     HANDLE hpipe;
+    HANDLE hmutex;
+    int num_players = 0;
 
     printf("[AGUARDANDO PLAYERS.....]");
+
+    hmutex = CreateMutexA(NULL, FALSE, "Global\\arbitro");
+    if(hmutex == NULL){
+        printf("erro ao criar mutex");
+        return 1;
+    }
 
     while(1){
         hpipe = CreateNamedPipeA(("\\\\.\\pipe\\Pipe"), PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 0, 0, 0, NULL);
@@ -68,11 +78,20 @@ int main(){
             return 1;
         }
 
+        WaitForSingleObject(hmutex, INFINITE);
+
+        if(num_players >= MAX_PLAYER){
+            printf("quantidade maxima atingida");
+            CloseHandle(hpipe);
+        }
+
+        ReleaseMutex(hmutex);
         BOOL connected = ConnectNamedPipe(hpipe, NULL);
 
         if(connected){
 
             HANDLE thread = CreateThread(NULL, 0, Thread_player, (LPVOID)hpipe /*cast para LPVOID */, 0, NULL);
+            num_players++;
 
             if(thread == NULL){
                 printf("erro na criacao da thread");
