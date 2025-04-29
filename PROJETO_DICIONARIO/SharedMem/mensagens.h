@@ -3,7 +3,8 @@
 
 #define TIPO_ENTRAR "entrar"
 #define TIPO_SAIR ":sair"
-
+#define TIPO_LIM_PLAYERS "recusado"
+#define TIPO_ACEITE "aceite"
 
 typedef struct
 {
@@ -11,6 +12,12 @@ typedef struct
     char username[30];
     char palavra[30];
 } mensagem;
+
+typedef struct 
+{
+    HANDLE hpipe;
+    mensagem msg_thread;
+} infoThread;
 
 
 #endif
