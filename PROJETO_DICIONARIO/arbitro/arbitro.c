@@ -6,9 +6,13 @@
 #include <windows.h>
 #include "../SharedMem/mensagens.h"
 
-#define MAX_PLAYER 2
+#define MAX_PLAYER 1
+#define TAM_NOME 20
 
+mensagem msg;
 HANDLE hmutex;
+
+char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
 int cont_players = 0;
 
 void warnsAll(char* tipo, char* username){
@@ -21,6 +25,15 @@ void warnsAll(char* tipo, char* username){
     }
 }
 
+int name_repeated(const char* nome){
+
+    for(int i = 0; i < cont_players; i++){
+        if( strcmp(PLAYER_NAMES[i] , nome) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 int addPlayer(){
     
     WaitForSingleObject(hmutex, INFINITE);
@@ -30,10 +43,19 @@ int addPlayer(){
     return cont_players;
 }
 
-int removePlayer(){
+int removePlayer(const char* nome){
     
     WaitForSingleObject(hmutex, INFINITE);
-    cont_players--;
+
+    for(int i = 0; i < cont_players ; i++){
+        if(strcmp(PLAYER_NAMES[i], nome) == 0){
+            for(int j = i; j < cont_players-1 ; j++  ){
+                strcpy(PLAYER_NAMES[j], PLAYER_NAMES[j + 1]);
+            }
+            cont_players--;
+            break;
+        }
+    }
     ReleaseMutex(hmutex);
 
     return cont_players;
@@ -47,7 +69,7 @@ void Comandos(mensagem msg){
     }
 
     if(strcmp(msg.tipo, TIPO_SAIR) == 0){
-        removePlayer();
+        removePlayer(msg.username);
         //response();
         warnsAll(TIPO_SAIR, msg.username);
     }
@@ -113,9 +135,19 @@ int main(){
             }
             ReleaseMutex(hmutex);
 
+            if(name_repeated(msg.username)){
+                printf("nome repetido, n pode entrar");
+                DWORD byteswrite;
+                WriteFile(hpipe, TIPO_LIM_PLAYERS, strlen(TIPO_LIM_PLAYERS)+1, &byteswrite, NULL);
+                DisconnectNamedPipe(hpipe);
+                CloseHandle(hpipe);
+                continue;
+            }
+
             DWORD bytesWritten;
             WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
 
+            strcpy(PLAYER_NAMES[cont_players][TAM_NOME], msg.username);
             addPlayer();
             
             infoThread* info = malloc(sizeof(infoThread));

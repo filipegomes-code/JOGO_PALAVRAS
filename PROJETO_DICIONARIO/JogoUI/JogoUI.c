@@ -35,7 +35,7 @@ int Pipe_jogoUI(mensagem msg){
     BOOL success = ReadFile(hPipeArbitro, resposta_recusado, sizeof(resposta_recusado), &bytesread, NULL);
 
     if(success && strcmp(resposta_recusado, TIPO_LIM_PLAYERS) == 0){
-        printf("Numero máximo de jogadores atingidos, n consegue entrar\n");
+        printf("N consegue entrar\n");
         CloseHandle(hPipeArbitro);
         return 1;
     }
