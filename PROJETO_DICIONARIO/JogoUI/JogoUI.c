@@ -7,6 +7,7 @@
 #include <Windows.h>
 #include "../SharedMem/mensagens.h"
 
+char* player;
 
 void Info_comandos(){
 
@@ -29,22 +30,54 @@ int Pipe_jogoUI(mensagem msg){
     DWORD byteswritten;
     WriteFile(hPipeArbitro, &msg , sizeof(msg), &byteswritten, NULL);
 
-    char resposta_recusado[600]; //ReadFile precisa de memória editável, não pode ser constante (como TIPO_LIM_PLAYERS) que estava a tentar usar
+    char resposta_recebida[600]; //ReadFile precisa de memória editável, não pode ser constante (como TIPO_LIM_PLAYERS) que estava a tentar usar
     DWORD bytesread;
-    BOOL success = ReadFile(hPipeArbitro, resposta_recusado, sizeof(resposta_recusado), &bytesread, NULL);
+    BOOL success = ReadFile(hPipeArbitro, resposta_recebida, sizeof(resposta_recebida), &bytesread, NULL);
     
-    if (success && strcmp(resposta_recusado, TIPO_LIM_PLAYERS) == 0){
+    if (success && strcmp(resposta_recebida, TIPO_LIM_PLAYERS) == 0){
         printf("N consegue entrar\n");
         CloseHandle(hPipeArbitro);
         return 1;
     }
 
     if(success && strcmp(msg.tipo, TIPO_LISTA)== 0){
-        printf("%s\n", resposta_recusado);
+        printf("%s\n", resposta_recebida);
+    }
+
+    if(success && strcmp(msg.tipo, TIPO_PONT)== 0){
+        printf("AQUI APARECE A PONTUACAO");
+        printf("%s\n", resposta_recebida);
     }
 
     CloseHandle(hPipeArbitro);
     return 0;
+}
+
+DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
+    char pipename[50];
+    snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", player);
+
+    HANDLE hPipe = CreateNamedPipeA(pipename, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT, 1, 0, 0, 0, NULL);
+    if(hPipe == INVALID_HANDLE_VALUE) return 1;
+
+    ConnectNamedPipe(hPipe, NULL);
+
+    char comando[20];
+    DWORD read;
+
+    while(ReadFile(hPipe, comando, sizeof(comando), &read, NULL)) {
+        if(strcmp(comando, TIPO_EXCLUIR) == 0) {
+            printf("Jogador excluido pelo arbitro.\n");
+            break;
+        }
+        if(strcmp(comando, TIPO_ENCERRAR) == 0) {
+            printf("Jogo encerrado pelo arbitro.\n");
+            break;
+        }
+    }
+
+    CloseHandle(hPipe);
+    exit(0);
 }
 
 
@@ -57,7 +90,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    char* player = argv[1];
+    player = argv[1];
     printf("jogador %s entrou no jogo\n", player);
 
     strcpy(msg.tipo , TIPO_ENTRAR); // usei strcpy pq eu controlo o tamanho da msg.tipo
@@ -68,6 +101,12 @@ int main(int argc, char* argv[]){
     }
 
     Info_comandos();
+
+    HANDLE hThreadComando = CreateThread(NULL, 0, Thread_JogoUI, NULL, 0, NULL);
+    if(hThreadComando == NULL){
+        printf("Erro a criar thread\n");
+        return 1;
+    }
 
     while(1){
         char input[30];
@@ -88,10 +127,16 @@ int main(int argc, char* argv[]){
             strncpy(msg.username, player, sizeof(msg.username));
             Pipe_jogoUI(msg);
             continue;
+        }else if(strcmp(input, TIPO_PONT)== 0){
+            printf("comando para ver a pontuacao\n");
+            strcpy(msg.tipo, TIPO_PONT);
+            strncpy(msg.username, player, sizeof(msg.username));
+            Pipe_jogoUI(msg);
+            continue;
         }
 
     } 
-
+    CloseHandle(hThreadComando);
     return 0;
 }
 

@@ -11,9 +11,11 @@
 
 mensagem msg;
 HANDLE hmutex;
+HANDLE Pipe_player_threads[MAX_PLAYER]; //um handle de arrays para guardar as threads criadas para cada jogador
 
 char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
 int cont_players = 0;
+int pontuacao[MAX_PLAYER] = {0};
 
 void warnsAll(char* tipo, char* username){
     if( strcmp(tipo , TIPO_ENTRAR) == 0){
@@ -34,32 +36,44 @@ int name_repeated(const char* nome){
     return 0;
 }
 
-int addPlayer(const char* nome){
+int addPlayer(const char* nome, HANDLE hpipe){
     
     WaitForSingleObject(hmutex, INFINITE);
     strcpy(PLAYER_NAMES[cont_players], nome);
+    Pipe_player_threads[cont_players] = hpipe;
+    pontuacao[cont_players] = 0;
     cont_players++;
     ReleaseMutex(hmutex);
 
     return cont_players;
 }
 
-int removePlayer(const char* nome){
-    
+void removePlayer(const char* nome){
     WaitForSingleObject(hmutex, INFINITE);
-
     for(int i = 0; i < cont_players ; i++){
         if(strcmp(PLAYER_NAMES[i], nome) == 0){
+            char pipename[50];
+            snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
+
+            HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+            if(hPipeComando != INVALID_HANDLE_VALUE){
+                DWORD byteswrite;
+                WriteFile(hPipeComando, TIPO_EXCLUIR, strlen(TIPO_EXCLUIR)+1, &byteswrite, NULL);
+                CloseHandle(hPipeComando);
+            } else {
+                printf("Erro ao conectar ao pipe do jogador %s para excluir.\n", PLAYER_NAMES[i]);
+            }
+
             for(int j = i; j < cont_players-1 ; j++  ){
                 strcpy(PLAYER_NAMES[j], PLAYER_NAMES[j + 1]);
+                pontuacao[j] = pontuacao[j+1];
+                Pipe_player_threads[j] = Pipe_player_threads[j+1];
             }
             cont_players--;
             break;
         }
     }
     ReleaseMutex(hmutex);
-
-    return cont_players;
 }
 
 void player_rejeitado(HANDLE hpipe, const char* TIPO){
@@ -95,7 +109,68 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
     Comandos(msg, hpipe);
 
     free(info);
-    CloseHandle(hpipe);
+    return 0;
+}
+
+DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
+    char input[100];
+    while(1){
+        printf("[COMANDOS]> ");
+        fgets(input, sizeof(input) ,stdin);
+        input[strcspn(input, "\n")] = 0;
+
+        if(strcmp(input, "listar")== 0){
+            WaitForSingleObject(hmutex, INFINITE);
+            printf("[LISTA DE JOGADORES ATIVOS]:\n");
+            for(int i = 0; i < cont_players; i++){
+                printf("%s -> %d pontos\n", PLAYER_NAMES[i], pontuacao[i]);
+            }
+            ReleaseMutex(hmutex);
+        }
+        else if(strncmp(input, "excluir ", 8 ) == 0){
+            char* nome = input + 8;
+            int existe = 0;
+            WaitForSingleObject(hmutex, INFINITE);
+            for(int i = 0 ; i < cont_players; i++){
+                if(strcmp(PLAYER_NAMES[i], nome) == 0){
+                    existe = 1;
+                    break;
+                }
+            }
+            ReleaseMutex(hmutex);
+
+            if(existe){
+                removePlayer(nome);
+                printf("Player %s foi expulso\n", nome);
+            }else
+                printf("jogador n existe\n");
+        }
+        else if(strcmp(input, "encerrar")== 0){
+            WaitForSingleObject(hmutex,INFINITE);
+            for(int i =0 ; i < cont_players; i++){
+                char pipename[50];
+                snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
+        
+                HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+                if(hPipeComando != INVALID_HANDLE_VALUE){
+                    DWORD byteswrite;
+                    WriteFile(hPipeComando, TIPO_ENCERRAR, strlen(TIPO_ENCERRAR)+1, &byteswrite, NULL);
+                    CloseHandle(hPipeComando);
+                } else {
+                    printf("Erro ao conectar ao pipe do jogador %s para encerrar.\n", PLAYER_NAMES[i]);
+                }
+        
+                CloseHandle(Pipe_player_threads[i]); // Fecha o pipe original do árbitro
+            }
+            cont_players = 0;
+            ReleaseMutex(hmutex);
+            printf("Jogo encerrado pelo arbitro\n");
+            exit(0);
+        }
+        else
+            printf("comando desconhecido\n");
+    }
+
     return 0;
 }
 
@@ -106,10 +181,19 @@ int main(){
     printf("[AGUARDANDO PLAYERS.....]");
 
     hmutex = CreateMutexA(NULL, FALSE, "Global\\arbitro");
+
     if(hmutex == NULL){
         printf("erro ao criar mutex");
         return 1;
     }
+
+    HANDLE hArbitro = CreateThread(NULL, 0, Thread_arbitro_comandos, NULL, 0, NULL);
+
+        if(hArbitro == NULL){
+            printf("erro na criaçao do thread para os comandos do arbitro");
+            return 1;
+        }else
+            CloseHandle(hArbitro);
 
     while(1){
         hpipe = CreateNamedPipeA(("\\\\.\\pipe\\Pipe"), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 0, 0, 0, NULL);
@@ -147,8 +231,7 @@ int main(){
                 }
                 DWORD bytesWritten;
                 WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
-                strcpy(PLAYER_NAMES[cont_players], msg.username);
-                addPlayer(msg.username);
+                addPlayer(msg.username, hpipe);
             }
             else if(strcmp(msg.tipo, TIPO_LISTA) == 0){
                 char lista[600] = "";
@@ -164,6 +247,22 @@ int main(){
                 DWORD byteswrite;
                 WriteFile(hpipe, lista, strlen(lista)+1, &byteswrite, NULL);
 
+                CloseHandle(hpipe);
+                continue;
+            }
+            else if(strcmp(msg.tipo, TIPO_PONT)==0){
+                char pontos[100] = "";
+                
+                WaitForSingleObject(hmutex, INFINITE);
+                printf("[TABELA DE PONTUACAO]:\n ");
+                for(int i = 0; i < cont_players; i++){
+                    char linha[50];
+                    snprintf(linha, sizeof(linha), "%s -> %d pontos\n", PLAYER_NAMES[i], pontuacao[i]);
+                    strcat(pontos, linha);
+                }
+                ReleaseMutex(hmutex);
+                DWORD byteswrite;
+                WriteFile(hpipe, pontos, strlen(pontos)+1, &byteswrite, NULL);
                 CloseHandle(hpipe);
                 continue;
             }

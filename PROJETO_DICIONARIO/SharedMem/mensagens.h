@@ -6,6 +6,9 @@
 #define TIPO_LIM_PLAYERS "recusado"
 #define TIPO_ACEITE "aceite"
 #define TIPO_LISTA ":jogs"
+#define TIPO_PONT ":pont"
+#define TIPO_EXCLUIR "excluir "
+#define TIPO_ENCERRAR "encerrar"
 
 typedef struct
 {
