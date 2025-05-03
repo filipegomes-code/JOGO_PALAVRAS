@@ -29,15 +29,18 @@ int Pipe_jogoUI(mensagem msg){
     DWORD byteswritten;
     WriteFile(hPipeArbitro, &msg , sizeof(msg), &byteswritten, NULL);
 
-
-    char resposta_recusado[10]; //ReadFile precisa de memória editável, não pode ser constante (como TIPO_LIM_PLAYERS) que estava a tentar usar
+    char resposta_recusado[600]; //ReadFile precisa de memória editável, não pode ser constante (como TIPO_LIM_PLAYERS) que estava a tentar usar
     DWORD bytesread;
     BOOL success = ReadFile(hPipeArbitro, resposta_recusado, sizeof(resposta_recusado), &bytesread, NULL);
-
-    if(success && strcmp(resposta_recusado, TIPO_LIM_PLAYERS) == 0){
+    
+    if (success && strcmp(resposta_recusado, TIPO_LIM_PLAYERS) == 0){
         printf("N consegue entrar\n");
         CloseHandle(hPipeArbitro);
         return 1;
+    }
+
+    if(success && strcmp(msg.tipo, TIPO_LISTA)== 0){
+        printf("%s\n", resposta_recusado);
     }
 
     CloseHandle(hPipeArbitro);
@@ -79,6 +82,12 @@ int main(int argc, char* argv[]){
             strncpy(msg.username, player, sizeof(msg.username));
             Pipe_jogoUI(msg);
             break;
+        }else if(strcmp(input, TIPO_LISTA)== 0){
+            printf("digitou o comando para ver a lista de jogadores\n");
+            strcpy(msg.tipo, TIPO_LISTA);
+            strncpy(msg.username, player, sizeof(msg.username));
+            Pipe_jogoUI(msg);
+            continue;
         }
 
     } 

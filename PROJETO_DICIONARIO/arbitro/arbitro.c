@@ -6,7 +6,7 @@
 #include <windows.h>
 #include "../SharedMem/mensagens.h"
 
-#define MAX_PLAYER 1
+#define MAX_PLAYER 2
 #define TAM_NOME 20
 
 mensagem msg;
@@ -34,9 +34,10 @@ int name_repeated(const char* nome){
     return 0;
 }
 
-int addPlayer(){
+int addPlayer(const char* nome){
     
     WaitForSingleObject(hmutex, INFINITE);
+    strcpy(PLAYER_NAMES[cont_players], nome);
     cont_players++;
     ReleaseMutex(hmutex);
 
@@ -61,8 +62,19 @@ int removePlayer(const char* nome){
     return cont_players;
 }
 
-            
-void Comandos(mensagem msg){
+void player_rejeitado(HANDLE hpipe, const char* TIPO){
+
+    printf("Jogador nao aceite");
+
+    DWORD byteswrite;
+    WriteFile(hpipe, TIPO_LIM_PLAYERS, strlen(TIPO_LIM_PLAYERS)+1, &byteswrite, NULL);
+                
+    DisconnectNamedPipe(hpipe); // se limite for atingido, "guarda" o pipe criado e é usado no proximo jogador que entrar, em vez, de se criar um novo pipe . n era preciso fazer , mas é interessante.
+    CloseHandle(hpipe);
+    
+}
+
+void Comandos(mensagem msg, HANDLE hpipe){
     if(strcmp(msg.tipo,TIPO_ENTRAR) == 0){
         //response();
         warnsAll(TIPO_ENTRAR, msg.username);
@@ -80,7 +92,7 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
     HANDLE hpipe = info->hpipe;
     mensagem msg = info->msg_thread;
     
-    Comandos(msg);
+    Comandos(msg, hpipe);
 
     free(info);
     CloseHandle(hpipe);
@@ -120,35 +132,41 @@ int main(){
                 CloseHandle(hpipe);
                 continue;
             }
+            
+            if(strcmp(msg.tipo, TIPO_ENTRAR)== 0){
+                WaitForSingleObject(hmutex,INFINITE);
+    
+                int cheio = cont_players >= MAX_PLAYER;
+                int repetido = name_repeated(msg.username);
+                ReleaseMutex(hmutex);
+    
+                if(cheio || repetido){
+                    // posso usar um operador ternário para dar printf quando é recusado por nome repetido ou limite maximo, mas n pus ainda e ns se vou por
+                    player_rejeitado(hpipe, TIPO_LIM_PLAYERS);
+                    continue;
+                }
+                DWORD bytesWritten;
+                WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
+                strcpy(PLAYER_NAMES[cont_players], msg.username);
+                addPlayer(msg.username);
+            }
+            else if(strcmp(msg.tipo, TIPO_LISTA) == 0){
+                char lista[600] = "";
 
-            WaitForSingleObject(hmutex,INFINITE);
+                WaitForSingleObject(hmutex, INFINITE);
+                printf("[LISTA DE JOGADORES]:\n ");
+                for(int i = 0; i < cont_players; i++){
+                    strcat(lista, PLAYER_NAMES[i]);
+                    strcat(lista, "\n");
+                }
+                ReleaseMutex(hmutex);
 
-            if(cont_players >= MAX_PLAYER){
-                printf("quantidade maxima de players atingida");
-                
                 DWORD byteswrite;
-                WriteFile(hpipe, TIPO_LIM_PLAYERS, strlen(TIPO_LIM_PLAYERS)+1, &byteswrite, NULL);
-                
-                DisconnectNamedPipe(hpipe); // se limite for atingido, "guarda" o pipe criado e é usado no proximo jogador que entrar, em vez, de se criar um novo pipe . n era preciso fazer , mas é interessante.
+                WriteFile(hpipe, lista, strlen(lista)+1, &byteswrite, NULL);
+
                 CloseHandle(hpipe);
                 continue;
             }
-            ReleaseMutex(hmutex);
-
-            if(name_repeated(msg.username)){
-                printf("nome repetido, n pode entrar");
-                DWORD byteswrite;
-                WriteFile(hpipe, TIPO_LIM_PLAYERS, strlen(TIPO_LIM_PLAYERS)+1, &byteswrite, NULL);
-                DisconnectNamedPipe(hpipe);
-                CloseHandle(hpipe);
-                continue;
-            }
-
-            DWORD bytesWritten;
-            WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
-
-            strcpy(PLAYER_NAMES[cont_players][TAM_NOME], msg.username);
-            addPlayer();
             
             infoThread* info = malloc(sizeof(infoThread));
             info->hpipe = hpipe;

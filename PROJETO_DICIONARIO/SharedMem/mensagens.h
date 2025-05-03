@@ -5,6 +5,7 @@
 #define TIPO_SAIR ":sair"
 #define TIPO_LIM_PLAYERS "recusado"
 #define TIPO_ACEITE "aceite"
+#define TIPO_LISTA ":jogs"
 
 typedef struct
 {
