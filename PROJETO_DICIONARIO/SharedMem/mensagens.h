@@ -10,6 +10,9 @@
 #define TIPO_EXCLUIR "excluir "
 #define TIPO_ENCERRAR "encerrar"
 
+DWORD WINAPI Thread_letras(LPVOID lpParam);
+int gerarletras();
+char sortearletras();
 typedef struct
 {
     char tipo[20];

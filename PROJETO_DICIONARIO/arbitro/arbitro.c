@@ -4,19 +4,27 @@
 #include <string.h>
 #include <math.h>
 #include <windows.h>
+#include <time.h>
 #include "../SharedMem/mensagens.h"
 
 #define MAX_PLAYER 2
 #define TAM_NOME 20
+#define RITMO 1
+#define MAXLETRAS 5
 
 mensagem msg;
 HANDLE hmutex;
 HANDLE Pipe_player_threads[MAX_PLAYER]; //um handle de arrays para guardar as threads criadas para cada jogador
 
-char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
-int cont_players = 0;
-int pontuacao[MAX_PLAYER] = {0};
+char vetorletras[MAXLETRAS]; // array para cada letra
+int letrascont = 0; // numeros de letras em uso
+int comecou = 0; //flag 
 
+char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
+int cont_players = 0; 
+int pontuacao[MAX_PLAYER] = {0}; // inicializa todas as pontuaçoes a zero
+
+// suposto enviar a todos os JogoUIs oq esta a acontecer
 void warnsAll(char* tipo, char* username){
     if( strcmp(tipo , TIPO_ENTRAR) == 0){
         printf("jogador %s entrou no Jogo\n", username);
@@ -43,9 +51,19 @@ int addPlayer(const char* nome, HANDLE hpipe){
     Pipe_player_threads[cont_players] = hpipe;
     pontuacao[cont_players] = 0;
     cont_players++;
+    // if temporario para testar as letras
+    if(cont_players == 1 && comecou == 0){
+        comecou = 1;
+        HANDLE hthreadletras = CreateThread(NULL, 0, Thread_letras, NULL, 0, NULL);
+        if(hthreadletras !=NULL){
+            CloseHandle(hthreadletras);
+        }
+    }
     ReleaseMutex(hmutex);
 
-    return cont_players;
+
+
+    return 0;
 }
 
 void removePlayer(const char* nome){
@@ -111,7 +129,7 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
     free(info);
     return 0;
 }
-
+// serve apenas para os comandos digitados pelo arbitro , precisa de ser Thread , senao entra em race conditions com outros threads
 DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
     char input[100];
     while(1){
@@ -174,7 +192,69 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
     return 0;
 }
 
-int main(){
+int gerarletras(){
+    for(int i =0; i < MAXLETRAS; i++) vetorletras[i] = '_';
+
+    return 0;
+}
+
+char sortearletras(){ return 'a' + (rand() % 26); }
+
+// permite sortear as letras sem entrar em race conditions 
+DWORD WINAPI Thread_letras(LPVOID lpParam){
+
+    srand((unsigned)time(NULL)); // srand espera sempre um num positivo
+
+    int tempovida[MAXLETRAS] = {0};
+    gerarletras(); // é preciso por isto aqui, senao o array nunca é inicializado com '_' e a verificaçao dentro de threads falha
+
+    while(1){
+        Sleep(RITMO * 1000); // passa de ms para s
+
+        WaitForSingleObject(hmutex, INFINITE);
+
+        int livre = -1;
+        // insere letra na 1ª posiçao livre 
+        for(int i = 0; i < MAXLETRAS; i++){
+            if(vetorletras[i] == '_'){
+                livre = i;
+                break;
+            }
+        }
+
+        if(livre != -1){
+            vetorletras[livre] = sortearletras();
+            tempovida[livre] = 1;
+        }else{
+            int posantiga = 0; // posicao mais antiga (mais tempo de vida), para substituir pela nova
+            int maxtempo = tempovida[0];
+            // checka se existe alguma letra mais antiga que a primeira
+            for(int i = 1; i < MAXLETRAS; i++){
+                if(tempovida[i] > maxtempo){
+                    maxtempo = tempovida[i];
+                    posantiga = i;
+                }
+            }
+
+            vetorletras[posantiga] = sortearletras();
+            tempovida[posantiga] = 1;
+        }
+        // incrementa segundos a cada elemento que é uma letra no vetor
+        for(int i = 0; i < MAXLETRAS; i++)
+            if(vetorletras[i] != '_') tempovida[i]++; 
+
+        printf("linha das letras ");
+        for(int i = 0; i < MAXLETRAS; i++){
+            printf("%c ", vetorletras[i]);
+        }
+        putchar('\n');
+        ReleaseMutex(hmutex);
+    }
+
+    return 0;
+}
+
+int main(){ 
     //mensagem msg;
     HANDLE hpipe;
 
