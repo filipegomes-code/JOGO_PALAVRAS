@@ -80,13 +80,12 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
     exit(0);
 }
 
-
 int main(int argc, char* argv[]){   
 
     mensagem msg;
 
     if(argc < 2 ){ 
-        printf("uso incorreto de de %s <username>", argv[0]);
+        printf("uso incorreto de %s <username>", argv[0]);
         return 1;
     }
 
@@ -115,24 +114,31 @@ int main(int argc, char* argv[]){
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = 0;
 
-        if(strcmp(input, TIPO_SAIR) == 0){
-            printf("Saiste do Jogo\n");
-            strcpy(msg.tipo, TIPO_SAIR);
+        if(input[0] == ':'){
+            if(strcmp(input, TIPO_SAIR) == 0){
+                printf("Saiste do Jogo\n");
+                strcpy(msg.tipo, TIPO_SAIR);
+                strncpy(msg.username, player, sizeof(msg.username));
+                Pipe_jogoUI(msg);
+                break;
+            }else if(strcmp(input, TIPO_LISTA)== 0){
+                printf("digitou o comando para ver a lista de jogadores\n");
+                strcpy(msg.tipo, TIPO_LISTA);
+                strncpy(msg.username, player, sizeof(msg.username));
+                Pipe_jogoUI(msg);
+                continue;
+            }else if(strcmp(input, TIPO_PONT)== 0){
+                printf("comando para ver a pontuacao\n");
+                strcpy(msg.tipo, TIPO_PONT);
+                strncpy(msg.username, player, sizeof(msg.username));
+                Pipe_jogoUI(msg);
+                continue;
+            }
+        }else{
+            strcpy(msg.tipo, "palavra");
             strncpy(msg.username, player, sizeof(msg.username));
+            strncpy(msg.palavra , input, sizeof(msg.palavra));
             Pipe_jogoUI(msg);
-            break;
-        }else if(strcmp(input, TIPO_LISTA)== 0){
-            printf("digitou o comando para ver a lista de jogadores\n");
-            strcpy(msg.tipo, TIPO_LISTA);
-            strncpy(msg.username, player, sizeof(msg.username));
-            Pipe_jogoUI(msg);
-            continue;
-        }else if(strcmp(input, TIPO_PONT)== 0){
-            printf("comando para ver a pontuacao\n");
-            strcpy(msg.tipo, TIPO_PONT);
-            strncpy(msg.username, player, sizeof(msg.username));
-            Pipe_jogoUI(msg);
-            continue;
         }
 
     } 

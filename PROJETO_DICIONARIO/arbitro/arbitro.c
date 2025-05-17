@@ -10,13 +10,18 @@
 #define MAX_PLAYER 2
 #define TAM_NOME 20
 #define RITMO 1
-#define MAXLETRAS 5
+#define MAXLETRAS_ECRAN 5
+#define MAX_PALAVRAS 10000
+#define MAX_LETRAS 12
 
 mensagem msg;
 HANDLE hmutex;
 HANDLE Pipe_player_threads[MAX_PLAYER]; //um handle de arrays para guardar as threads criadas para cada jogador
 
-char vetorletras[MAXLETRAS]; // array para cada letra
+char dicionario[MAX_PALAVRAS][MAX_LETRAS]; // armazena as palavras do dicionario (dicionario_pt_eng.txt)
+int total_pal = 0;
+
+char vetorletras[MAXLETRAS_ECRAN]; // array para cada letra
 int letrascont = 0; // numeros de letras em uso
 int comecou = 0; //flag 
 
@@ -33,6 +38,25 @@ void warnsAll(char* tipo, char* username){
     if( strcmp(tipo , TIPO_SAIR) == 0){
         printf("Jogador %s saiu do Jogo\n", username);
     }
+}
+
+//Fazzer um dicionario com um file .txt c/ palavras e usar fopen
+void armazenar_dicionario(const char* nomefile){
+
+    FILE* file = fopen(nomefile, "r");
+    if(!file){
+        perror("erro ao abrir file");
+        exit(1);
+    }
+
+    while(fgets(dicionario[total_pal], MAX_LETRAS, file)){
+        dicionario[total_pal][strcspn(dicionario[total_pal], "r")] = 0; // remove \n
+        total_pal++;
+        if(total_pal >= MAX_LETRAS) break;
+    }
+
+    fclose(file);
+    printf("dicionario armazenado com %d palavras\n", total_pal);
 }
 
 int name_repeated(const char* nome){
@@ -60,8 +84,6 @@ int addPlayer(const char* nome, HANDLE hpipe){
         }
     }
     ReleaseMutex(hmutex);
-
-
 
     return 0;
 }
@@ -107,16 +129,104 @@ void player_rejeitado(HANDLE hpipe, const char* TIPO){
 }
 
 void Comandos(mensagem msg, HANDLE hpipe){
-    if(strcmp(msg.tipo,TIPO_ENTRAR) == 0){
-        //response();
-        warnsAll(TIPO_ENTRAR, msg.username);
+    if(strcmp(msg.tipo, TIPO_ENTRAR)== 0){
+        WaitForSingleObject(hmutex,INFINITE);
+
+        int cheio = cont_players >= MAX_PLAYER;
+        int repetido = name_repeated(msg.username);
+        ReleaseMutex(hmutex);
+
+        if(cheio || repetido){
+            // posso usar um operador ternário para dar printf quando é recusado por nome repetido ou limite maximo, mas n pus ainda e ns se vou por
+            player_rejeitado(hpipe, TIPO_LIM_PLAYERS);
+        }
+        DWORD bytesWritten;
+        WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
+        addPlayer(msg.username, hpipe);
+        // warnsall (opcional)
+    }
+    else if(strcmp(msg.tipo, TIPO_LISTA) == 0){
+        char lista[600] = "";
+
+        WaitForSingleObject(hmutex, INFINITE);
+        printf("[LISTA DE JOGADORES]:\n ");
+        for(int i = 0; i < cont_players; i++){
+            strcat(lista, PLAYER_NAMES[i]);
+            strcat(lista, "\n");
+        }
+        ReleaseMutex(hmutex);
+
+        DWORD byteswrite;
+        WriteFile(hpipe, lista, strlen(lista)+1, &byteswrite, NULL);
+
+        CloseHandle(hpipe);
+        // warnsall (opcional)
+    }
+    else if(strcmp(msg.tipo, TIPO_PONT)==0){
+        char pontos[100] = "";
+        
+        WaitForSingleObject(hmutex, INFINITE);
+        printf("[TABELA DE PONTUACAO]:\n ");
+        for(int i = 0; i < cont_players; i++){
+            char linha[50];
+            snprintf(linha, sizeof(linha), "%s -> %d pontos\n", PLAYER_NAMES[i], pontuacao[i]);
+            strcat(pontos, linha);
+        }
+        ReleaseMutex(hmutex);
+        DWORD byteswrite;
+        WriteFile(hpipe, pontos, strlen(pontos)+1, &byteswrite, NULL);
+        CloseHandle(hpipe);
+        // warnsall (opcional)
+    }
+}
+
+int letras_visivel(const char* palavra){
+
+    int conta_vetor[26] = {0};
+    int conta_pal[26] = {0};
+
+    // vetorletras -> array para cada letra
+    WaitForSingleObject(hmutex, INFINITE);
+    for(int i = 0; i < MAXLETRAS_ECRAN; i++){
+        char c = vetorletras[i];
+        if( c>= 'a' && c<= 'z'){
+            conta_vetor[c-'a']++;
+        }
+    }
+    ReleaseMutex(hmutex);
+
+    // conta se quantidade de letras na palavra é igual às visiveis
+    for(int i = 0; i < palavra[i] != '\0'; i++){
+        char c = palavra[i];
+        if( c>= 'a' && c<='z')
+            conta_pal[c - 'a']++;
+        else
+            return 0;
     }
 
-    if(strcmp(msg.tipo, TIPO_SAIR) == 0){
-        removePlayer(msg.username);
-        //response();
-        warnsAll(TIPO_SAIR, msg.username);
+    for(int i =0; i < 26; i++){
+        if(conta_pal[i] > conta_vetor[i]){
+            return 0;
+        }
     }
+
+    for(int i = 0; i< strlen(palavra); i--){
+        for(int j = 0; j < MAXLETRAS_ECRAN; j++){
+            if(vetorletras[j] == palavra[i]){
+                vetorletras[j] = '_';
+                break;
+            }
+        }
+    }
+
+    return 1; // palavra pode ser formada com letras visiveis
+}
+
+int valida_pal(const char* username, const char* palavra){
+
+    // ver se a palavra existe if(pal_existe);
+
+    // ver se as letras da palavra estao visiveis e na msm quantidade if(letras_visiveis);
 }
 
 DWORD WINAPI Thread_player(LPVOID lpParam){
@@ -124,7 +234,11 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
     HANDLE hpipe = info->hpipe;
     mensagem msg = info->msg_thread;
     
-    Comandos(msg, hpipe);
+    if(strcmp(msg.tipo, "palavra") == 0){
+        // funcao para ver se a palavra esta no dicionario
+        valida_pal(msg.username, msg.palavra);
+    }else
+        Comandos(msg, hpipe);
 
     free(info);
     return 0;
@@ -132,6 +246,7 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
 // serve apenas para os comandos digitados pelo arbitro , precisa de ser Thread , senao entra em race conditions com outros threads
 DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
     char input[100];
+
     while(1){
         printf("[COMANDOS]> ");
         fgets(input, sizeof(input) ,stdin);
@@ -193,7 +308,7 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
 }
 
 int gerarletras(){
-    for(int i =0; i < MAXLETRAS; i++) vetorletras[i] = '_';
+    for(int i =0; i < MAXLETRAS_ECRAN; i++) vetorletras[i] = '_';
 
     return 0;
 }
@@ -205,7 +320,7 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
 
     srand((unsigned)time(NULL)); // srand espera sempre um num positivo
 
-    int tempovida[MAXLETRAS] = {0};
+    int tempovida[MAXLETRAS_ECRAN] = {0};
     gerarletras(); // é preciso por isto aqui, senao o array nunca é inicializado com '_' e a verificaçao dentro de threads falha
 
     while(1){
@@ -215,7 +330,7 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
 
         int livre = -1;
         // insere letra na 1ª posiçao livre 
-        for(int i = 0; i < MAXLETRAS; i++){
+        for(int i = 0; i < MAXLETRAS_ECRAN; i++){
             if(vetorletras[i] == '_'){
                 livre = i;
                 break;
@@ -229,7 +344,7 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
             int posantiga = 0; // posicao mais antiga (mais tempo de vida), para substituir pela nova
             int maxtempo = tempovida[0];
             // checka se existe alguma letra mais antiga que a primeira
-            for(int i = 1; i < MAXLETRAS; i++){
+            for(int i = 1; i < MAXLETRAS_ECRAN; i++){
                 if(tempovida[i] > maxtempo){
                     maxtempo = tempovida[i];
                     posantiga = i;
@@ -240,11 +355,11 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
             tempovida[posantiga] = 1;
         }
         // incrementa segundos a cada elemento que é uma letra no vetor
-        for(int i = 0; i < MAXLETRAS; i++)
+        for(int i = 0; i < MAXLETRAS_ECRAN; i++)
             if(vetorletras[i] != '_') tempovida[i]++; 
 
         printf("linha das letras ");
-        for(int i = 0; i < MAXLETRAS; i++){
+        for(int i = 0; i < MAXLETRAS_ECRAN; i++){
             printf("%c ", vetorletras[i]);
         }
         putchar('\n');
@@ -293,56 +408,6 @@ int main(){
 
             if(!success){
                 printf("erro a ler file");
-                CloseHandle(hpipe);
-                continue;
-            }
-            
-            if(strcmp(msg.tipo, TIPO_ENTRAR)== 0){
-                WaitForSingleObject(hmutex,INFINITE);
-    
-                int cheio = cont_players >= MAX_PLAYER;
-                int repetido = name_repeated(msg.username);
-                ReleaseMutex(hmutex);
-    
-                if(cheio || repetido){
-                    // posso usar um operador ternário para dar printf quando é recusado por nome repetido ou limite maximo, mas n pus ainda e ns se vou por
-                    player_rejeitado(hpipe, TIPO_LIM_PLAYERS);
-                    continue;
-                }
-                DWORD bytesWritten;
-                WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
-                addPlayer(msg.username, hpipe);
-            }
-            else if(strcmp(msg.tipo, TIPO_LISTA) == 0){
-                char lista[600] = "";
-
-                WaitForSingleObject(hmutex, INFINITE);
-                printf("[LISTA DE JOGADORES]:\n ");
-                for(int i = 0; i < cont_players; i++){
-                    strcat(lista, PLAYER_NAMES[i]);
-                    strcat(lista, "\n");
-                }
-                ReleaseMutex(hmutex);
-
-                DWORD byteswrite;
-                WriteFile(hpipe, lista, strlen(lista)+1, &byteswrite, NULL);
-
-                CloseHandle(hpipe);
-                continue;
-            }
-            else if(strcmp(msg.tipo, TIPO_PONT)==0){
-                char pontos[100] = "";
-                
-                WaitForSingleObject(hmutex, INFINITE);
-                printf("[TABELA DE PONTUACAO]:\n ");
-                for(int i = 0; i < cont_players; i++){
-                    char linha[50];
-                    snprintf(linha, sizeof(linha), "%s -> %d pontos\n", PLAYER_NAMES[i], pontuacao[i]);
-                    strcat(pontos, linha);
-                }
-                ReleaseMutex(hmutex);
-                DWORD byteswrite;
-                WriteFile(hpipe, pontos, strlen(pontos)+1, &byteswrite, NULL);
                 CloseHandle(hpipe);
                 continue;
             }
