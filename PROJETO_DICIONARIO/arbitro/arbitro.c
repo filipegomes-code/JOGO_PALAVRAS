@@ -40,6 +40,29 @@ void warnsAll(char* tipo, char* username){
     }
 }
 
+void envia_letras(){
+    char linha[50] = "LETRAS: ";
+
+    for(int i =0; i < MAXLETRAS_ECRAN; i++){
+        char letra[3];
+        snprintf(letra , sizeof(letra), "%c ", vetorletras[i]);
+        strcat(linha, letra);
+    }
+
+    for(int  i=0; i < cont_players; i++){
+        char pipename[50];
+        snprintf(pipename, sizeof(pipename),"\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
+
+        HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        if (hPipeComando != INVALID_HANDLE_VALUE) {
+            DWORD written;
+            WriteFile(hPipeComando, linha, strlen(linha) + 1, &written, NULL);
+            CloseHandle(hPipeComando);
+        }
+    }
+
+}
+
 //Fazzer um dicionario com um file .txt c/ palavras e usar fopen
 void armazenar_dicionario(const char* nomefile){
 
@@ -90,6 +113,7 @@ int addPlayer(const char* nome, HANDLE hpipe){
 
 void removePlayer(const char* nome){
     WaitForSingleObject(hmutex, INFINITE);
+
     for(int i = 0; i < cont_players ; i++){
         if(strcmp(PLAYER_NAMES[i], nome) == 0){
             char pipename[50];
@@ -109,6 +133,8 @@ void removePlayer(const char* nome){
                 pontuacao[j] = pontuacao[j+1];
                 Pipe_player_threads[j] = Pipe_player_threads[j+1];
             }
+           
+
             cont_players--;
             break;
         }
@@ -118,7 +144,7 @@ void removePlayer(const char* nome){
 
 void player_rejeitado(HANDLE hpipe, const char* TIPO){
 
-    printf("Jogador nao aceite");
+    printf("Jogador nao aceite, cheio ou nome repetido");
 
     DWORD byteswrite;
     WriteFile(hpipe, TIPO_LIM_PLAYERS, strlen(TIPO_LIM_PLAYERS)+1, &byteswrite, NULL);
@@ -178,6 +204,22 @@ void Comandos(mensagem msg, HANDLE hpipe){
         CloseHandle(hpipe);
         // warnsall (opcional)
     }
+    else if(strcmp(msg.tipo, TIPO_SAIR) == 0){
+        removePlayer(msg.username);
+        printf("jogador %s saiu do jogo", msg.username);
+        CloseHandle(hpipe);
+        return;
+    }
+}
+
+int pal_existe(const char* palavra){
+
+    for(int i=0; i < total_pal; i++){
+        if(strcmp(dicionario[i], palavra) == 0){
+            return 1;
+        }
+    }
+    return 1;
 }
 
 int letras_visivel(const char* palavra){
@@ -196,7 +238,7 @@ int letras_visivel(const char* palavra){
     ReleaseMutex(hmutex);
 
     // conta se quantidade de letras na palavra é igual às visiveis
-    for(int i = 0; i < palavra[i] != '\0'; i++){
+    for(int i = 0; palavra[i] != '\0'; i++){
         char c = palavra[i];
         if( c>= 'a' && c<='z')
             conta_pal[c - 'a']++;
@@ -210,23 +252,57 @@ int letras_visivel(const char* palavra){
         }
     }
 
-    for(int i = 0; i< strlen(palavra); i--){
-        for(int j = 0; j < MAXLETRAS_ECRAN; j++){
-            if(vetorletras[j] == palavra[i]){
-                vetorletras[j] = '_';
-                break;
-            }
-        }
-    }
-
     return 1; // palavra pode ser formada com letras visiveis
 }
 
 int valida_pal(const char* username, const char* palavra){
 
     // ver se a palavra existe if(pal_existe);
+    if(!pal_existe(palavra)){
+        printf("pal n está no dicionario");
+        WaitForSingleObject(hmutex, INFINITE);
+        for(int i =0; i < cont_players; i++){
+            if(strcmp(PLAYER_NAMES[i], username)==0){
+                pontuacao[i]-= (int)(strlen(palavra)/2);
+                break;
+            }
+        }
+        ReleaseMutex(hmutex);
+        return 0;
+    }
 
     // ver se as letras da palavra estao visiveis e na msm quantidade if(letras_visiveis);
+    if(!letras_visivel(palavra)){
+        printf("erro letra já desapareceu ou funcao n funciona");
+        WaitForSingleObject(hmutex, INFINITE);
+        for(int i =0; i < cont_players; i++){
+            if(strcmp(PLAYER_NAMES[i], username) == 0){
+                pontuacao[i]-= (int)(strlen(palavra) / 2);
+                break;
+            }
+        }
+        ReleaseMutex(hmutex);
+        return 0;
+    }
+
+    printf("palavra valida");
+    //dar 1 ponto por letra, acho que diz isso no enunciado
+    for(int i = 0; i < cont_players; i++){
+        if(strcmp(PLAYER_NAMES[i], username)== 0){
+            pontuacao[i]+= (int)strlen(palavra);
+            break;
+        }
+    }
+    // remover letras que estao no vetorletras[]
+    for(int i=0; i < strlen(palavra); i++ ){
+        for(int j =0; j < MAXLETRAS_ECRAN; j++){
+            if(vetorletras[j] == palavra[i]){
+                vetorletras[j] = '_';
+                break;
+            }
+        }
+    }
+    return 1;
 }
 
 DWORD WINAPI Thread_player(LPVOID lpParam){
@@ -354,9 +430,12 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
             vetorletras[posantiga] = sortearletras();
             tempovida[posantiga] = 1;
         }
+
         // incrementa segundos a cada elemento que é uma letra no vetor
         for(int i = 0; i < MAXLETRAS_ECRAN; i++)
             if(vetorletras[i] != '_') tempovida[i]++; 
+
+        envia_letras();
 
         printf("linha das letras ");
         for(int i = 0; i < MAXLETRAS_ECRAN; i++){

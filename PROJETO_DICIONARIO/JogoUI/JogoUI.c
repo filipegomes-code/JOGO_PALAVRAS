@@ -8,6 +8,7 @@
 #include "../SharedMem/mensagens.h"
 
 char* player;
+volatile int terminar = 0;
 
 void Info_comandos(){
 
@@ -45,7 +46,7 @@ int Pipe_jogoUI(mensagem msg){
     }
 
     if(success && strcmp(msg.tipo, TIPO_PONT)== 0){
-        printf("AQUI APARECE A PONTUACAO");
+        printf("[TABELA PONTUACAO]: ");
         printf("%s\n", resposta_recebida);
     }
 
@@ -57,27 +58,48 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
     char pipename[50];
     snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", player);
 
-    HANDLE hPipe = CreateNamedPipeA(pipename, PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT, 1, 0, 0, 0, NULL);
-    if(hPipe == INVALID_HANDLE_VALUE) return 1;
+    HANDLE hPipe;
+    while (!terminar) {
+        hPipe = CreateNamedPipeA(pipename, PIPE_ACCESS_INBOUND, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 0, 0, 0, NULL);
 
-    ConnectNamedPipe(hPipe, NULL);
-
-    char comando[20];
-    DWORD read;
-
-    while(ReadFile(hPipe, comando, sizeof(comando), &read, NULL)) {
-        if(strcmp(comando, TIPO_EXCLUIR) == 0) {
-            printf("Jogador excluido pelo arbitro.\n");
-            break;
+        if (hPipe == INVALID_HANDLE_VALUE) {
+            printf("Erro ao criar pipe de comando\n");
+            return 1;
         }
-        if(strcmp(comando, TIPO_ENCERRAR) == 0) {
-            printf("Jogo encerrado pelo arbitro.\n");
-            break;
+
+        BOOL connected = ConnectNamedPipe(hPipe, NULL);
+        if (!connected) {
+            CloseHandle(hPipe);
+            continue;
+        } 
+
+        char comando[100];
+        DWORD read;
+        BOOL success;
+
+        while ( !terminar && (success = ReadFile(hPipe, comando, sizeof(comando), &read, NULL)) && read > 0) {
+            comando[read] = '\0';
+
+            if (strcmp(comando, TIPO_EXCLUIR) == 0) {
+                printf("Jogador excluido pelo arbitro.\n");
+                terminar = 1;
+                CloseHandle(hPipe);
+                exit(0);
+            } else if (strcmp(comando, TIPO_ENCERRAR) == 0) {
+                printf("Jogo encerrado pelo arbitro.\n");
+                terminar = 1;
+                CloseHandle(hPipe);
+                exit(0);
+            } else {
+                printf("\r\033[K%s\n", comando);  // imprime a linha de letras e limpa o input antigo
+                printf(">");                      // repõe o prompt , por n ter esta linha de codigo, deu ganda problema no crl do terminal que n voltava para o prompt
+                fflush(stdout);
+            }
         }
+
     }
-
     CloseHandle(hPipe);
-    exit(0);
+    return 0;
 }
 
 int main(int argc, char* argv[]){   
@@ -107,7 +129,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    while(1){
+    while(!terminar){
         char input[30];
 
         putchar('>');
@@ -117,10 +139,11 @@ int main(int argc, char* argv[]){
         if(input[0] == ':'){
             if(strcmp(input, TIPO_SAIR) == 0){
                 printf("Saiste do Jogo\n");
+                terminar =1 ;
                 strcpy(msg.tipo, TIPO_SAIR);
                 strncpy(msg.username, player, sizeof(msg.username));
                 Pipe_jogoUI(msg);
-                break;
+                exit(0);
             }else if(strcmp(input, TIPO_LISTA)== 0){
                 printf("digitou o comando para ver a lista de jogadores\n");
                 strcpy(msg.tipo, TIPO_LISTA);
@@ -142,6 +165,7 @@ int main(int argc, char* argv[]){
         }
 
     } 
+    WaitForSingleObject(hThreadComando, INFINITE);
     CloseHandle(hThreadComando);
     return 0;
 }
