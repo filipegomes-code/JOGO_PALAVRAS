@@ -9,9 +9,9 @@
 
 #define MAX_PLAYER 2
 #define TAM_NOME 20
-#define RITMO 1
+#define RITMO 3
 #define MAXLETRAS_ECRAN 5
-#define MAX_PALAVRAS 10000
+#define MAX_PALAVRAS 47038
 #define MAX_LETRAS 12
 
 mensagem msg;
@@ -28,6 +28,10 @@ int comecou = 0; //flag
 char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
 int cont_players = 0; 
 int pontuacao[MAX_PLAYER] = {0}; // inicializa todas as pontuaçoes a zero
+// memoria partilhada
+HANDLE hMapFile;
+char* letras_partilhadas;
+
 
 // suposto enviar a todos os JogoUIs oq esta a acontecer
 void warnsAll(char* tipo, char* username){
@@ -40,30 +44,7 @@ void warnsAll(char* tipo, char* username){
     }
 }
 
-void envia_letras(){
-    char linha[50] = "LETRAS: ";
-
-    for(int i =0; i < MAXLETRAS_ECRAN; i++){
-        char letra[3];
-        snprintf(letra , sizeof(letra), "%c ", vetorletras[i]);
-        strcat(linha, letra);
-    }
-
-    for(int  i=0; i < cont_players; i++){
-        char pipename[50];
-        snprintf(pipename, sizeof(pipename),"\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
-
-        HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-        if (hPipeComando != INVALID_HANDLE_VALUE) {
-            DWORD written;
-            WriteFile(hPipeComando, linha, strlen(linha) + 1, &written, NULL);
-            CloseHandle(hPipeComando);
-        }
-    }
-
-}
-
-//Fazzer um dicionario com um file .txt c/ palavras e usar fopen
+//Fazer um dicionario com um file .txt c/ palavras e usar fopen
 void armazenar_dicionario(const char* nomefile){
 
     FILE* file = fopen(nomefile, "r");
@@ -73,9 +54,9 @@ void armazenar_dicionario(const char* nomefile){
     }
 
     while(fgets(dicionario[total_pal], MAX_LETRAS, file)){
-        dicionario[total_pal][strcspn(dicionario[total_pal], "r")] = 0; // remove \n
+        dicionario[total_pal][strcspn(dicionario[total_pal], "\r\n")] = 0; // remove \r\n
         total_pal++;
-        if(total_pal >= MAX_LETRAS) break;
+        if(total_pal >= MAX_PALAVRAS) break;
     }
 
     fclose(file);
@@ -133,8 +114,6 @@ void removePlayer(const char* nome){
                 pontuacao[j] = pontuacao[j+1];
                 Pipe_player_threads[j] = Pipe_player_threads[j+1];
             }
-           
-
             cont_players--;
             break;
         }
@@ -219,7 +198,7 @@ int pal_existe(const char* palavra){
             return 1;
         }
     }
-    return 1;
+    return 0;
 }
 
 int letras_visivel(const char* palavra){
@@ -255,7 +234,7 @@ int letras_visivel(const char* palavra){
     return 1; // palavra pode ser formada com letras visiveis
 }
 
-int valida_pal(const char* username, const char* palavra){
+int valida_pal(const char* username, const char* palavra, HANDLE hpipe){
 
     // ver se a palavra existe if(pal_existe);
     if(!pal_existe(palavra)){
@@ -268,6 +247,11 @@ int valida_pal(const char* username, const char* palavra){
             }
         }
         ReleaseMutex(hmutex);
+
+        const char* resposta = "Palavra n existe";
+        DWORD write;
+        WriteFile(hpipe, resposta, strlen(resposta)+1, &write, NULL);
+
         return 0;
     }
 
@@ -282,11 +266,16 @@ int valida_pal(const char* username, const char* palavra){
             }
         }
         ReleaseMutex(hmutex);
+
+        const char* resposta = "Palavra invalida, n tem letras todas";
+        DWORD write;
+        WriteFile(hpipe, resposta, strlen(resposta)+1, &write, NULL);
+
         return 0;
     }
-
-    printf("palavra valida");
+    
     //dar 1 ponto por letra, acho que diz isso no enunciado
+    WaitForSingleObject(hmutex, INFINITE); // só uso este mutex aqui, pq vou enviar uma resposta para o jogoui
     for(int i = 0; i < cont_players; i++){
         if(strcmp(PLAYER_NAMES[i], username)== 0){
             pontuacao[i]+= (int)strlen(palavra);
@@ -302,6 +291,12 @@ int valida_pal(const char* username, const char* palavra){
             }
         }
     }
+    ReleaseMutex(hmutex);
+
+    const char* resposta = "Palavra valida";
+    DWORD write;
+    WriteFile(hpipe, resposta, strlen(resposta)+1, &write, NULL);
+
     return 1;
 }
 
@@ -312,7 +307,7 @@ DWORD WINAPI Thread_player(LPVOID lpParam){
     
     if(strcmp(msg.tipo, "palavra") == 0){
         // funcao para ver se a palavra esta no dicionario
-        valida_pal(msg.username, msg.palavra);
+        valida_pal(msg.username, msg.palavra, hpipe);
     }else
         Comandos(msg, hpipe);
 
@@ -376,7 +371,25 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
             printf("Jogo encerrado pelo arbitro\n");
             exit(0);
         }
-        else
+        else if (strncmp(input, "iniciarbot ",11)== 0){
+            char* nomebot = input + 11;
+
+            STARTUPINFOA si = { sizeof(si) };
+            PROCESS_INFORMATION pi;
+        
+            char cmd[100];
+            snprintf(cmd, sizeof(cmd), "bot.exe %s", nomebot); // ou ".\\bot.exe %s" se estiveres com problemas no caminho
+
+            BOOL success = CreateProcess(NULL, cmd, NULL, NULL, FALSE, 0 , NULL, NULL, &si, &pi);
+
+            if (success) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                printf("BOT %s iniciado com sucesso.\n", nomebot);
+            } else {
+                printf("Erro ao iniciar BOT %s.\n", nomebot);
+            }
+        }else
             printf("comando desconhecido\n");
     }
 
@@ -435,14 +448,15 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
         for(int i = 0; i < MAXLETRAS_ECRAN; i++)
             if(vetorletras[i] != '_') tempovida[i]++; 
 
-        envia_letras();
+        // atualiza mem partilhada
+        memcpy(letras_partilhadas, vetorletras, MAXLETRAS_ECRAN);
+        ReleaseMutex(hmutex);
 
         printf("linha das letras ");
         for(int i = 0; i < MAXLETRAS_ECRAN; i++){
             printf("%c ", vetorletras[i]);
         }
         putchar('\n');
-        ReleaseMutex(hmutex);
     }
 
     return 0;
@@ -451,6 +465,7 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
 int main(){ 
     //mensagem msg;
     HANDLE hpipe;
+    armazenar_dicionario("arbitro/dicionario_pt_eng.txt");
 
     printf("[AGUARDANDO PLAYERS.....]");
 
@@ -460,14 +475,26 @@ int main(){
         printf("erro ao criar mutex");
         return 1;
     }
+    // cria o mapa, é como se fosse um quadro preto
+    hMapFile = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, MAXLETRAS_ECRAN, "Global\\LetrasPartilhadas");
+    if (hMapFile == NULL) {
+        printf("Erro ao criar memoria partilhada\n");
+        return 1;
+    }
+    // aqui é como se tivessemos um projetor/lanterna que aponta para o quadro preto
+    letras_partilhadas = (char*) MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, MAXLETRAS_ECRAN);
+    if (letras_partilhadas == NULL) {
+        printf("Erro ao mapear memoria\n");
+        return 1;
+    }
 
     HANDLE hArbitro = CreateThread(NULL, 0, Thread_arbitro_comandos, NULL, 0, NULL);
 
-        if(hArbitro == NULL){
-            printf("erro na criaçao do thread para os comandos do arbitro");
-            return 1;
-        }else
-            CloseHandle(hArbitro);
+    if(hArbitro == NULL){
+        printf("erro na criaçao do thread para os comandos do arbitro");
+        return 1;
+    }else
+        CloseHandle(hArbitro);
 
     while(1){
         hpipe = CreateNamedPipeA(("\\\\.\\pipe\\Pipe"), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 0, 0, 0, NULL);
@@ -480,7 +507,6 @@ int main(){
         BOOL connected = ConnectNamedPipe(hpipe, NULL);
         
         if(connected){
-
             mensagem msg;
             DWORD bytesread;
             BOOL success = ReadFile(hpipe, &msg, sizeof(msg), &bytesread, NULL);

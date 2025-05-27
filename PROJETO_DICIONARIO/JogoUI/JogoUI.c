@@ -7,8 +7,15 @@
 #include <Windows.h>
 #include "../SharedMem/mensagens.h"
 
+#define MAXLETRAS_ECRAN 5
+
 char* player;
 volatile int terminar = 0;
+
+HANDLE hMapFile;
+char* letras_partilhadas;
+
+HANDLE hmutexprints;
 
 void Info_comandos(){
 
@@ -34,7 +41,7 @@ int Pipe_jogoUI(mensagem msg){
     char resposta_recebida[600]; //ReadFile precisa de memória editável, não pode ser constante (como TIPO_LIM_PLAYERS) que estava a tentar usar
     DWORD bytesread;
     BOOL success = ReadFile(hPipeArbitro, resposta_recebida, sizeof(resposta_recebida), &bytesread, NULL);
-    
+
     if (success && strcmp(resposta_recebida, TIPO_LIM_PLAYERS) == 0){
         printf("N consegue entrar\n");
         CloseHandle(hPipeArbitro);
@@ -47,6 +54,10 @@ int Pipe_jogoUI(mensagem msg){
 
     if(success && strcmp(msg.tipo, TIPO_PONT)== 0){
         printf("[TABELA PONTUACAO]: ");
+        printf("%s\n", resposta_recebida);
+    }
+
+    if(success && strcmp(msg.tipo, "palavra")==0){
         printf("%s\n", resposta_recebida);
     }
 
@@ -73,32 +84,56 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
             continue;
         } 
 
-        char comando[100];
+        char input[100];
         DWORD read;
         BOOL success;
 
-        while ( !terminar && (success = ReadFile(hPipe, comando, sizeof(comando), &read, NULL)) && read > 0) {
-            comando[read] = '\0';
+        while ( !terminar && (success = ReadFile(hPipe, input, sizeof(input), &read, NULL)) && read > 0) {
+            input[read] = '\0';
 
-            if (strcmp(comando, TIPO_EXCLUIR) == 0) {
+            if (strcmp(input, TIPO_EXCLUIR) == 0) {
                 printf("Jogador excluido pelo arbitro.\n");
                 terminar = 1;
                 CloseHandle(hPipe);
                 exit(0);
-            } else if (strcmp(comando, TIPO_ENCERRAR) == 0) {
+            } else if (strcmp(input, TIPO_ENCERRAR) == 0) {
                 printf("Jogo encerrado pelo arbitro.\n");
                 terminar = 1;
                 CloseHandle(hPipe);
                 exit(0);
-            } else {
-                printf("\r\033[K%s\n", comando);  // imprime a linha de letras e limpa o input antigo
-                printf(">");                      // repõe o prompt , por n ter esta linha de codigo, deu ganda problema no crl do terminal que n voltava para o prompt
+            } else if (strncmp(input, "LETRAS:", 7) != 0) {
+                printf("\r\033[K%s\n", input); // Só imprime se não for uma linha de letras
+                printf(">");
                 fflush(stdout);
-            }
+            }            
         }
 
     }
     CloseHandle(hPipe);
+    return 0;
+}
+
+DWORD WINAPI Thread_AtualizaLetras(LPVOID lpParam) {
+    char ult_letras[MAXLETRAS_ECRAN] = {0};
+
+    while (!terminar) {
+        if (letras_partilhadas == NULL) break;
+
+        // Verifica se houve alteração nas letras
+        if (memcmp(ult_letras, letras_partilhadas, MAXLETRAS_ECRAN) != 0) {
+            memcpy(ult_letras, letras_partilhadas, MAXLETRAS_ECRAN);
+
+            printf("\r\033[KLETRAS: ");
+            for (int i = 0; i < MAXLETRAS_ECRAN; i++) {
+                printf("%c ", ult_letras[i]);
+            }
+            printf("\n>");
+            fflush(stdout);
+        }
+
+        Sleep(300); // polling leve
+    }
+
     return 0;
 }
 
@@ -123,9 +158,28 @@ int main(int argc, char* argv[]){
 
     Info_comandos();
 
+    // Aceder à memória partilhada com as letras visíveis
+    hMapFile = OpenFileMapping(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");
+    if (hMapFile == NULL) {
+        printf("Erro ao abrir memoria partilhada\n");
+        return 1;
+    }
+
+    letras_partilhadas = (char*) MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, MAXLETRAS_ECRAN);
+    if (letras_partilhadas == NULL) {
+        printf("Erro ao mapear memoria partilhada\n");
+        return 1;
+    }
+
     HANDLE hThreadComando = CreateThread(NULL, 0, Thread_JogoUI, NULL, 0, NULL);
     if(hThreadComando == NULL){
         printf("Erro a criar thread\n");
+        return 1;
+    }
+
+    HANDLE hThreadLetras = CreateThread(NULL, 0, Thread_AtualizaLetras, NULL, 0, NULL);
+    if(hThreadLetras == NULL){
+        printf("Erro a criar thread de letras\n");
         return 1;
     }
 
@@ -166,7 +220,12 @@ int main(int argc, char* argv[]){
 
     } 
     WaitForSingleObject(hThreadComando, INFINITE);
+    WaitForSingleObject(hThreadLetras, INFINITE);
+
     CloseHandle(hThreadComando);
+    CloseHandle(hThreadLetras);
+    UnmapViewOfFile(letras_partilhadas);
+    CloseHandle(hMapFile);
     return 0;
 }
 
