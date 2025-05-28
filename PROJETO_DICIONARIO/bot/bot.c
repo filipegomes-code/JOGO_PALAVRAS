@@ -171,7 +171,7 @@ DWORD WINAPI Thread_Comando(LPVOID lpParam) {
 }
 
 int main(int argc, char* argv[]) {
-
+    srand((unsigned)time(NULL));
     if(argc !=2){
         printf("uso incorreto do bot");
         return 1;
@@ -221,7 +221,7 @@ int main(int argc, char* argv[]) {
             msg.palavra[sizeof(msg.palavra) - 1] = '\0';  // segurança extra
             Pipe_bot(msg);
         }
-        Sleep(3000); // Espera 3s para nova tentativa, polling
+        Sleep(5000 + rand()%29000);
     }
 
     WaitForSingleObject(hThread, INFINITE);

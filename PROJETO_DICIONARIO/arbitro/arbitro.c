@@ -30,7 +30,8 @@ int comecou = 0; //flag
 char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
 int cont_players = 0; 
 int pontuacao[MAX_PLAYER] = {0}; // inicializa todas as pontuaçoes a zero
-int indice_lider = -1; // índice do líder atual, começa inválido
+int pontuacao_lider = -1;
+char nome_lider[TAM_NOME] = "";
 // memoria partilhada
 HANDLE hMapFile;
 char* letras_partilhadas;
@@ -94,7 +95,7 @@ void warnsAll(const char* mensagem){
             }
             CloseHandle(hPipeComando);
         } else {
-            printf("[WARNsAll] Não conseguiu abrir pipe do jogador %s\n", PLAYER_NAMES[i]);
+           // printf("[WARNsAll] Não conseguiu abrir pipe do jogador %s\n", PLAYER_NAMES[i]);
         }
     }
     ReleaseMutex(hmutex);
@@ -141,7 +142,7 @@ void jogo_start(){
 int addPlayer(const char* nome, HANDLE hpipe){
     
     WaitForSingleObject(hmutex, INFINITE);
-    printf("[DEBUG addPlayer] Player %s adicionado. Handle pipe: %p\n", nome, hpipe);
+    printf("[ARBITRO] Player %s adicionado.", nome);
     strcpy(PLAYER_NAMES[cont_players], nome);
     Pipe_player_threads[cont_players] = hpipe;
     pontuacao[cont_players] = 0;
@@ -149,10 +150,11 @@ int addPlayer(const char* nome, HANDLE hpipe){
     //mensagem enviada para os outros jogoui, é como se tovesse TIPO_ENTRAR
     char msg[100];
     snprintf(msg, sizeof(msg), "player ENTROU: %s", nome);
-    warnsAll(msg);
-
     // define a partir de quantos players chamamos a thread para gerar as letras, ou seja, pode-se dizer que é quando o jogo começa
     jogo_start();
+    Sleep(100);
+    warnsAll(msg);
+
     ReleaseMutex(hmutex);
 
     return 0;
@@ -306,24 +308,65 @@ int letras_visivel(const char* palavra){
 
     return 1; // palavra pode ser formada com letras visiveis
 }
-// imprime qual pessoa tem a maior pontuacao e passou à frente
+// imprime qual pessoa tem a maior pontuacao e passou à frente, sempre que alguem passa à frente, pode aparecer várias vezes
 void pontuacao_maior(){
     int max_pontos = -1;
-    int novo_lider = -1;
+    char novo_lider[TAM_NOME] = "";
 
     for (int i = 0; i < cont_players; i++) {
         if (pontuacao[i] > max_pontos) {
             max_pontos = pontuacao[i];
-            novo_lider = i;
+            strcpy(novo_lider, PLAYER_NAMES[i]);
         }
     }
 
-    if (novo_lider != indice_lider) {
-        indice_lider = novo_lider;
+    // Só avisa se o líder mudou
+    if (strcmp(nome_lider, novo_lider) != 0) {
+        strcpy(nome_lider, novo_lider);
+        pontuacao_lider = max_pontos;
+
         char msg[150];
-        snprintf(msg, sizeof(msg), "Jogador %s passou para a frente com %d pontos", PLAYER_NAMES[indice_lider], pontuacao[indice_lider]);
+        snprintf(msg, sizeof(msg), "Jogador %s passou para a frente com %d pontos", novo_lider, pontuacao_lider);
         warnsAll(msg);
     }
+}
+
+void anunciar_vencedor_encerrar(){
+    char vencedor[TAM_NOME] = "";
+    int max_pontos = -1;
+
+    for (int i = 0; i < cont_players; i++) {
+        if (pontuacao[i] > max_pontos) {
+            max_pontos = pontuacao[i];
+            strcpy(vencedor, PLAYER_NAMES[i]);
+        }
+    }
+
+    char msg_final[150];
+    snprintf(msg_final, sizeof(msg_final), "VENCEDOR: %s com %d pontos", vencedor, max_pontos);
+    printf("[FIM DO JOGO] %s\n", msg_final);
+
+    // envia mensagem do vencedor para todos os jogadores
+    warnsAll(msg_final);
+    // espera um pouco para garantir que a mensagem é lida antes de encerrar
+    Sleep(100);
+
+    for(int i =0 ; i < cont_players; i++){
+        char pipename[50];
+        snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
+
+        HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        if(hPipeComando != INVALID_HANDLE_VALUE){
+            DWORD byteswrite;
+            WriteFile(hPipeComando, TIPO_ENCERRAR, strlen(TIPO_ENCERRAR)+1, &byteswrite, NULL);
+            CloseHandle(hPipeComando);
+        } else {
+            printf("Erro ao conectar ao pipe do jogador %s para encerrar.\n", PLAYER_NAMES[i]);
+        }
+
+        CloseHandle(Pipe_player_threads[i]); // Fecha o pipe original do árbitro
+    }
+    cont_players = 0;
 }
 
 int valida_pal(const char* username, const char* palavra, HANDLE hpipe){
@@ -450,22 +493,8 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
         }
         else if(strcmp(input, "encerrar")== 0){
             WaitForSingleObject(hmutex,INFINITE);
-            for(int i =0 ; i < cont_players; i++){
-                char pipename[50];
-                snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
-        
-                HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-                if(hPipeComando != INVALID_HANDLE_VALUE){
-                    DWORD byteswrite;
-                    WriteFile(hPipeComando, TIPO_ENCERRAR, strlen(TIPO_ENCERRAR)+1, &byteswrite, NULL);
-                    CloseHandle(hPipeComando);
-                } else {
-                    printf("Erro ao conectar ao pipe do jogador %s para encerrar.\n", PLAYER_NAMES[i]);
-                }
-        
-                CloseHandle(Pipe_player_threads[i]); // Fecha o pipe original do árbitro
-            }
-            cont_players = 0;
+            // enviar mensagem final a todos e encerrar
+            anunciar_vencedor_encerrar();
             ReleaseMutex(hmutex);
             printf("Jogo encerrado pelo arbitro\n");
             exit(0);
@@ -488,11 +517,11 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
             } else {
                 printf("Erro ao iniciar BOT %s.\n", nomebot);
             }
-        }else if( strcmp(input, "aumentar")==0){
+        }else if( strcmp(input,"acelerar")==0){
             ritmo++;
             armazenar_ritmo_registry();
             printf("[ARBITRO] Ritmo aumentado para %d segundos", ritmo);
-        }else if( strcmp(input, "diminuir")==0){
+        }else if( strcmp(input, "travar")==0){
             if(ritmo > 1) ritmo--;
             armazenar_ritmo_registry();
             printf("[ARBITRO] Ritmo diminuido para %d segundos", ritmo);
