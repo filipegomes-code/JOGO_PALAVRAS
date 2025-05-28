@@ -209,26 +209,16 @@ int main(int argc, char* argv[]) {
     while (!terminar) {
         WaitForSingleObject(hmutex, INFINITE);
         memcpy(letras_visiveis, letras_partilhadas, MAXLETRAS_ECRAN);
-        letras_visiveis[MAXLETRAS_ECRAN] = '\0'; // garante string válida
-        
-        // Corrige letras: só letras minúsculas, ignora lixo
-        for (int i = 0; i < MAXLETRAS_ECRAN; i++) {
-            char c = letras_visiveis[i];
-            if (!isalpha(c)) {
-                letras_visiveis[i] = '_';  // marca inválido
-            } else {
-                letras_visiveis[i] = tolower(c);  // garante lowercase
-            }
-        }
-        ReleaseMutex(hmutex);
 
         printf("[BOT] Letras visiveis: %.*s\n", MAXLETRAS_ECRAN, letras_visiveis);
 
         const char* palavra = escolher_palavra();
-        if (palavra) {
+        ReleaseMutex(hmutex);
+        if (palavra && letras_suficientes(palavra)) {
             strcpy(msg.tipo, "palavra");
             strncpy(msg.username, player, sizeof(msg.username));
             strncpy(msg.palavra, palavra, sizeof(msg.palavra));
+            msg.palavra[sizeof(msg.palavra) - 1] = '\0';  // segurança extra
             Pipe_bot(msg);
         }
         Sleep(3000); // Espera 3s para nova tentativa, polling

@@ -3,22 +3,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 #include <windows.h>
 #include <time.h>
 #include "../SharedMem/mensagens.h"
 
 #define MAX_PLAYER 2
 #define TAM_NOME 20
-#define RITMO 3
 #define MAXLETRAS_ECRAN 5
 #define MAX_PALAVRAS 47038
-#define MAX_LETRAS 12
+
+int MAX_LETRAS = 6;
+int ritmo = 3; // ritmo em segundos (mutável)
 
 mensagem msg;
 HANDLE hmutex;
 HANDLE Pipe_player_threads[MAX_PLAYER]; //um handle de arrays para guardar as threads criadas para cada jogador
 
-char dicionario[MAX_PALAVRAS][MAX_LETRAS]; // armazena as palavras do dicionario (dicionario_pt_eng.txt)
+char dicionario[MAX_PALAVRAS][13]; // armazena as palavras do dicionario (dicionario_pt_eng.txt), uso 13, pq é 12+\0
 int total_pal = 0;
 
 char vetorletras[MAXLETRAS_ECRAN]; // array para cada letra
@@ -32,6 +34,47 @@ int pontuacao[MAX_PLAYER] = {0}; // inicializa todas as pontuaçoes a zero
 HANDLE hMapFile;
 char* letras_partilhadas;
 
+void armazenar_ritmo_registry() {
+    HKEY hKey;
+    DWORD disp;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\TP_SO2"), 0, NULL, 0, KEY_WRITE, NULL, &hKey, &disp) == ERROR_SUCCESS) {
+        RegSetValueEx(hKey, TEXT("Ritmo"), 0, REG_DWORD, (const BYTE*)&ritmo, sizeof(DWORD));
+        RegCloseKey(hKey);
+    }
+}
+
+void armazenar_maxletras_registry() {
+    HKEY hKey;
+    DWORD disp;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, TEXT("Software\\TP_SO2"), 0, NULL, 0, KEY_WRITE, NULL, &hKey, &disp) == ERROR_SUCCESS) {
+        RegSetValueEx(hKey, TEXT("MAXLETRAS"), 0, REG_DWORD, (const BYTE*)&MAX_LETRAS, sizeof(DWORD));
+        RegCloseKey(hKey);
+    }
+}
+
+void ler_ritmo_registry() {
+    HKEY hKey;
+    DWORD tamanho = sizeof(DWORD);
+    DWORD valor = 3;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, TEXT("Software\\TP_SO2"), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueEx(hKey, TEXT("Ritmo"), NULL, NULL, (LPBYTE)&valor, &tamanho) == ERROR_SUCCESS) {
+            ritmo = (int)valor;
+        }
+        RegCloseKey(hKey);
+    }
+}
+
+void ler_maxletras_registry() {
+    HKEY hKey;
+    DWORD tamanho = sizeof(DWORD);
+    DWORD valor = 6;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, TEXT("Software\\TP_SO2"), 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueEx(hKey, TEXT("MAXLETRAS"), NULL, NULL, (LPBYTE)&valor, &tamanho) == ERROR_SUCCESS) {
+            MAX_LETRAS = (int)valor > 12 ? 12 : (int)valor;
+        }
+        RegCloseKey(hKey);
+    }
+}
 
 // suposto enviar a todos os JogoUIs oq esta a acontecer
 void warnsAll(char* tipo, char* username){
@@ -72,6 +115,16 @@ int name_repeated(const char* nome){
     return 0;
 }
 
+void jogo_start(){
+    if(cont_players >= 2 && comecou == 0){
+        comecou = 1;
+        HANDLE hthreadletras = CreateThread(NULL, 0, Thread_letras, NULL, 0, NULL);
+        if(hthreadletras !=NULL){
+            CloseHandle(hthreadletras);
+        }
+    }
+}
+
 int addPlayer(const char* nome, HANDLE hpipe){
     
     WaitForSingleObject(hmutex, INFINITE);
@@ -79,14 +132,8 @@ int addPlayer(const char* nome, HANDLE hpipe){
     Pipe_player_threads[cont_players] = hpipe;
     pontuacao[cont_players] = 0;
     cont_players++;
-    // if temporario para testar as letras
-    if(cont_players == 1 && comecou == 0){
-        comecou = 1;
-        HANDLE hthreadletras = CreateThread(NULL, 0, Thread_letras, NULL, 0, NULL);
-        if(hthreadletras !=NULL){
-            CloseHandle(hthreadletras);
-        }
-    }
+    // define a partir de quantos players chamamos a thread para gerar as letras, ou seja, pode-se dizer que é quando o jogo começa
+    jogo_start();
     ReleaseMutex(hmutex);
 
     return 0;
@@ -238,7 +285,7 @@ int valida_pal(const char* username, const char* palavra, HANDLE hpipe){
 
     // ver se a palavra existe if(pal_existe);
     if(!pal_existe(palavra)){
-        printf("pal n está no dicionario");
+        printf("[ARBITRO] pal n existe no dicionario\n");
         WaitForSingleObject(hmutex, INFINITE);
         for(int i =0; i < cont_players; i++){
             if(strcmp(PLAYER_NAMES[i], username)==0){
@@ -389,6 +436,14 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
             } else {
                 printf("Erro ao iniciar BOT %s.\n", nomebot);
             }
+        }else if( strcmp(input, "aumentar")==0){
+            ritmo++;
+            armazenar_ritmo_registry();
+            printf("[ARBITRO] Ritmo aumentado para %d segundos", ritmo);
+        }else if( strcmp(input, "diminuir")==0){
+            if(ritmo > 1) ritmo--;
+            armazenar_ritmo_registry();
+            printf("[ARBITRO] Ritmo diminuido para %d segundos", ritmo);
         }else
             printf("comando desconhecido\n");
     }
@@ -413,7 +468,7 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
     gerarletras(); // é preciso por isto aqui, senao o array nunca é inicializado com '_' e a verificaçao dentro de threads falha
 
     while(1){
-        Sleep(RITMO * 1000); // passa de ms para s
+        Sleep(ritmo * 1000); // passa de ms para s
 
         WaitForSingleObject(hmutex, INFINITE);
 
@@ -465,6 +520,9 @@ DWORD WINAPI Thread_letras(LPVOID lpParam){
 int main(){ 
     //mensagem msg;
     HANDLE hpipe;
+    ler_ritmo_registry();
+    ler_maxletras_registry();
+    armazenar_maxletras_registry();
     armazenar_dicionario("arbitro/dicionario_pt_eng.txt");
 
     printf("[AGUARDANDO PLAYERS.....]");
