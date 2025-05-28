@@ -8,7 +8,7 @@
 #include <time.h>
 #include "../SharedMem/mensagens.h"
 
-#define MAX_PLAYER 2
+#define MAX_PLAYER 20
 #define TAM_NOME 20
 #define MAXLETRAS_ECRAN 5
 #define MAX_PALAVRAS 47038
@@ -30,6 +30,7 @@ int comecou = 0; //flag
 char PLAYER_NAMES[MAX_PLAYER][TAM_NOME];
 int cont_players = 0; 
 int pontuacao[MAX_PLAYER] = {0}; // inicializa todas as pontuaçoes a zero
+int indice_lider = -1; // índice do líder atual, começa inválido
 // memoria partilhada
 HANDLE hMapFile;
 char* letras_partilhadas;
@@ -77,14 +78,26 @@ void ler_maxletras_registry() {
 }
 
 // suposto enviar a todos os JogoUIs oq esta a acontecer
-void warnsAll(char* tipo, char* username){
-    if( strcmp(tipo , TIPO_ENTRAR) == 0){
-        printf("jogador %s entrou no Jogo\n", username);
-    }
+void warnsAll(const char* mensagem){
+    char pipename[50];
 
-    if( strcmp(tipo , TIPO_SAIR) == 0){
-        printf("Jogador %s saiu do Jogo\n", username);
+    WaitForSingleObject(hmutex, INFINITE);
+    for (int i = 0; i < cont_players; i++) {
+        snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
+
+        HANDLE hPipeComando = CreateFileA(pipename, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        if(hPipeComando != INVALID_HANDLE_VALUE) {
+            DWORD byteswrite;
+            BOOL wrote = WriteFile(hPipeComando, mensagem, strlen(mensagem) + 1, &byteswrite, NULL);
+            if(!wrote) {
+                printf("[WARNsAll] Falha ao escrever no pipe do jogador %s\n", PLAYER_NAMES[i]);
+            }
+            CloseHandle(hPipeComando);
+        } else {
+            printf("[WARNsAll] Não conseguiu abrir pipe do jogador %s\n", PLAYER_NAMES[i]);
+        }
     }
+    ReleaseMutex(hmutex);
 }
 
 //Fazer um dicionario com um file .txt c/ palavras e usar fopen
@@ -128,10 +141,16 @@ void jogo_start(){
 int addPlayer(const char* nome, HANDLE hpipe){
     
     WaitForSingleObject(hmutex, INFINITE);
+    printf("[DEBUG addPlayer] Player %s adicionado. Handle pipe: %p\n", nome, hpipe);
     strcpy(PLAYER_NAMES[cont_players], nome);
     Pipe_player_threads[cont_players] = hpipe;
     pontuacao[cont_players] = 0;
     cont_players++;
+    //mensagem enviada para os outros jogoui, é como se tovesse TIPO_ENTRAR
+    char msg[100];
+    snprintf(msg, sizeof(msg), "player ENTROU: %s", nome);
+    warnsAll(msg);
+
     // define a partir de quantos players chamamos a thread para gerar as letras, ou seja, pode-se dizer que é quando o jogo começa
     jogo_start();
     ReleaseMutex(hmutex);
@@ -144,6 +163,12 @@ void removePlayer(const char* nome){
 
     for(int i = 0; i < cont_players ; i++){
         if(strcmp(PLAYER_NAMES[i], nome) == 0){
+            //msg enviada para os outros jogoui
+            char msg[100];
+            snprintf(msg, sizeof(msg), "player SAIU: %s", nome);
+            warnsAll(msg);
+
+
             char pipename[50];
             snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", PLAYER_NAMES[i]);
 
@@ -191,6 +216,7 @@ void Comandos(mensagem msg, HANDLE hpipe){
         if(cheio || repetido){
             // posso usar um operador ternário para dar printf quando é recusado por nome repetido ou limite maximo, mas n pus ainda e ns se vou por
             player_rejeitado(hpipe, TIPO_LIM_PLAYERS);
+            return;
         }
         DWORD bytesWritten;
         WriteFile(hpipe, "aceite" , strlen("aceite") + 1, &bytesWritten, NULL);
@@ -232,7 +258,7 @@ void Comandos(mensagem msg, HANDLE hpipe){
     }
     else if(strcmp(msg.tipo, TIPO_SAIR) == 0){
         removePlayer(msg.username);
-        printf("jogador %s saiu do jogo", msg.username);
+        printf("jogador %s saiu do jogo\n", msg.username);
         CloseHandle(hpipe);
         return;
     }
@@ -280,6 +306,25 @@ int letras_visivel(const char* palavra){
 
     return 1; // palavra pode ser formada com letras visiveis
 }
+// imprime qual pessoa tem a maior pontuacao e passou à frente
+void pontuacao_maior(){
+    int max_pontos = -1;
+    int novo_lider = -1;
+
+    for (int i = 0; i < cont_players; i++) {
+        if (pontuacao[i] > max_pontos) {
+            max_pontos = pontuacao[i];
+            novo_lider = i;
+        }
+    }
+
+    if (novo_lider != indice_lider) {
+        indice_lider = novo_lider;
+        char msg[150];
+        snprintf(msg, sizeof(msg), "Jogador %s passou para a frente com %d pontos", PLAYER_NAMES[indice_lider], pontuacao[indice_lider]);
+        warnsAll(msg);
+    }
+}
 
 int valida_pal(const char* username, const char* palavra, HANDLE hpipe){
 
@@ -320,7 +365,7 @@ int valida_pal(const char* username, const char* palavra, HANDLE hpipe){
 
         return 0;
     }
-    
+
     //dar 1 ponto por letra, acho que diz isso no enunciado
     WaitForSingleObject(hmutex, INFINITE); // só uso este mutex aqui, pq vou enviar uma resposta para o jogoui
     for(int i = 0; i < cont_players; i++){
@@ -329,6 +374,13 @@ int valida_pal(const char* username, const char* palavra, HANDLE hpipe){
             break;
         }
     }
+    
+    char msg[150];
+    snprintf(msg, sizeof(msg), "Jogador %s adivinhou a palavra '%s'", username, palavra);
+    warnsAll(msg);
+    // funcao para mostrar oq tem pontuacao mais alta
+    pontuacao_maior();
+
     // remover letras que estao no vetorletras[]
     for(int i=0; i < strlen(palavra); i++ ){
         for(int j =0; j < MAXLETRAS_ECRAN; j++){
