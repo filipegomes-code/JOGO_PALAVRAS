@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
     mensagem msg;
 
     carregar_dicionario("dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
-    printf("ola");
+    
     hmutex = CreateMutexA(NULL, FALSE, "Global\\geral");
     if (hmutex == NULL) {
         printf("[BOT] ERRO: Mutex não foi criado!\n");
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
 
     HANDLE hThread = CreateThread(NULL, 0, Thread_Comando, NULL, 0, NULL);
     if (!hThread) return 1;
-
+    
     printf("[BOT] Entrou no ciclo principal. Jogador: %s\n", player);
 
     while (!terminar) {
