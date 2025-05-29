@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
     mensagem msg;
     carregar_dicionario("bot/dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
 
-    hmutex = CreateMutexA(NULL, FALSE, "Global\\arbitro");
+    hmutex = CreateMutexA(NULL, FALSE, "Global\\geral");
 
     // conecta à mem partilhada (mapa) , foi criado o mapa no arbitro.
     HANDLE hMapFile = OpenFileMapping(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");

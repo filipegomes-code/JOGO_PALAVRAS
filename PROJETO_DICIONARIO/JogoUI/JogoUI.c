@@ -15,8 +15,6 @@ volatile int terminar = 0;
 HANDLE hMapFile;
 char* letras_partilhadas;
 
-HANDLE hmutexprints;
-
 void Info_comandos(){
 
     printf("COMANDOS:\n");

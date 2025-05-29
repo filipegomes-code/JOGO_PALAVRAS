@@ -36,6 +36,17 @@ char nome_lider[TAM_NOME] = "";
 HANDLE hMapFile;
 char* letras_partilhadas;
 
+void print_comandos(){
+
+    printf("COMANDOS:\n");
+    printf("listar - mostra jogadores e a sua pontuacao\n");
+    printf("excluir - Permite expulsar jogador do jogo\n");
+    printf("acelerar - Permite aumentar o ritmo\n");
+    printf("travar - Permite desacelerar o ritmo\n");
+    printf("iniciarbot <nome> - inicia um jogador bot automatico\n");
+    printf("encerrar - encerra todos os programas ativos\n\n");
+}
+
 void armazenar_ritmo_registry() {
     HKEY hKey;
     DWORD disp;
@@ -606,9 +617,10 @@ int main(){
     armazenar_maxletras_registry();
     armazenar_dicionario("arbitro/dicionario_pt_eng.txt");
 
+    print_comandos();
     printf("[AGUARDANDO PLAYERS.....]");
 
-    hmutex = CreateMutexA(NULL, FALSE, "Global\\arbitro");
+    hmutex = CreateMutexA(NULL, FALSE, "Global\\geral");
 
     if(hmutex == NULL){
         printf("erro ao criar mutex");
