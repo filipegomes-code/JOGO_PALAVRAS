@@ -177,15 +177,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    strncpy_s(player, argv[1], sizeof(player), _TRUNCATE);
+    strncpy_s(player, sizeof(player), argv[1], _TRUNCATE);
 
     mensagem msg;
-    carregar_dicionario("bot/dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
+    carregar_dicionario("dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
 
     hmutex = CreateMutexA(NULL, FALSE, "Global\\geral");
 
     // conecta à mem partilhada (mapa) , foi criado o mapa no arbitro.
-    HANDLE hMapFile = OpenFileMapping(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");
+    HANDLE hMapFile = OpenFileMappingA(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");
     if (hMapFile == NULL) {
         printf("BOT: erro ao abrir memória partilhada\n");
         return 1;
@@ -199,7 +199,7 @@ int main(int argc, char* argv[]) {
     }
 
     strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_ENTRAR);
-    strncpy_s(msg.username, player, sizeof(msg.username), _TRUNCATE);
+    strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
 
     if (Pipe_bot(msg) == 1) return 1;
 
@@ -216,8 +216,8 @@ int main(int argc, char* argv[]) {
         ReleaseMutex(hmutex);
         if (palavra && letras_suficientes(palavra)) {
             strcpy_s(msg.tipo, sizeof(msg.tipo), "palavra");
-            strncpy_s(msg.username, player, sizeof(msg.username), _TRUNCATE);
-            strncpy_s(msg.palavra, palavra, sizeof(msg.palavra), _TRUNCATE);
+            strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
+            strncpy_s(msg.palavra, sizeof(msg.palavra), palavra, _TRUNCATE);
             msg.palavra[sizeof(msg.palavra) - 1] = '\0';  // segurança extra
             Pipe_bot(msg);
         }

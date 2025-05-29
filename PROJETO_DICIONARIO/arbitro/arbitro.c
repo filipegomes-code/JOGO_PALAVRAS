@@ -615,7 +615,7 @@ int main(){
     ler_ritmo_registry();
     ler_maxletras_registry();
     armazenar_maxletras_registry();
-    armazenar_dicionario("arbitro/dicionario_pt_eng.txt");
+    armazenar_dicionario("dicionario_pt_eng.txt");
 
     print_comandos();
     printf("[AGUARDANDO PLAYERS.....]");
@@ -627,7 +627,7 @@ int main(){
         return 1;
     }
     // cria o mapa, é como se fosse um quadro preto
-    hMapFile = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, MAXLETRAS_ECRAN, "Global\\LetrasPartilhadas");
+    hMapFile = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, MAXLETRAS_ECRAN, "Global\\LetrasPartilhadas");
     if (hMapFile == NULL) {
         printf("Erro ao criar memoria partilhada\n");
         return 1;
