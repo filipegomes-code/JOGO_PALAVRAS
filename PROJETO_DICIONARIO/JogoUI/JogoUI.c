@@ -105,9 +105,8 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
                 fflush(stdout);
             }            
         }
-
+        CloseHandle(hPipe);
     }
-    CloseHandle(hPipe);
     return 0;
 }
 
@@ -147,8 +146,8 @@ int main(int argc, char* argv[]){
     player = argv[1];
     printf("jogador %s entrou no jogo\n", player);
 
-    strcpy(msg.tipo , TIPO_ENTRAR); // usei strcpy pq eu controlo o tamanho da msg.tipo
-    strncpy(msg.username, player, sizeof(msg.username)); // uso strncpy aqui pq o tamanho do username pode passar o tamanho do buffer e pode dar overflow. 
+    strcpy_s(msg.tipo , sizeof(msg.tipo), TIPO_ENTRAR); // usei strcpy pq eu controlo o tamanho da msg.tipo
+    strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE); // uso strncpy aqui pq o tamanho do username pode passar o tamanho do buffer e pode dar overflow. 
 
     if(Pipe_jogoUI(msg) == 1){
         return 1;
@@ -157,7 +156,7 @@ int main(int argc, char* argv[]){
     Info_comandos();
 
     // Aceder à memória partilhada com as letras visíveis
-    hMapFile = OpenFileMapping(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");
+    hMapFile = OpenFileMappingA(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");
     if (hMapFile == NULL) {
         printf("Erro ao abrir memoria partilhada\n");
         return 1;
@@ -192,27 +191,27 @@ int main(int argc, char* argv[]){
             if(strcmp(input, TIPO_SAIR) == 0){
                 printf("Saiste do Jogo\n");
                 terminar =1 ;
-                strcpy(msg.tipo, TIPO_SAIR);
-                strncpy(msg.username, player, sizeof(msg.username));
+                strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_SAIR);
+                strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
                 Pipe_jogoUI(msg);
                 exit(0);
             }else if(strcmp(input, TIPO_LISTA)== 0){
                 printf("digitou o comando para ver a lista de jogadores\n");
-                strcpy(msg.tipo, TIPO_LISTA);
-                strncpy(msg.username, player, sizeof(msg.username));
+                strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_LISTA);
+                strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
                 Pipe_jogoUI(msg);
                 continue;
             }else if(strcmp(input, TIPO_PONT)== 0){
                 printf("comando para ver a pontuacao\n");
-                strcpy(msg.tipo, TIPO_PONT);
-                strncpy(msg.username, player, sizeof(msg.username));
+                strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_PONT);
+                strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
                 Pipe_jogoUI(msg);
                 continue;
             }
         }else{
-            strcpy(msg.tipo, "palavra");
-            strncpy(msg.username, player, sizeof(msg.username));
-            strncpy(msg.palavra , input, sizeof(msg.palavra));
+            strcpy_s(msg.tipo, sizeof(msg.tipo), "palavra");
+            strncpy_s(msg.username, sizeof(msg.username) ,player, _TRUNCATE);
+            strncpy_s(msg.palavra , sizeof(msg.palavra),input, _TRUNCATE);
             Pipe_jogoUI(msg);
         }
 

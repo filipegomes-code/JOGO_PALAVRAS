@@ -44,7 +44,7 @@ void carregar_dicionario(const char* filename) {
         palavra[strcspn(palavra, "\r\n")] = '\0';  // remove \n ou \r\n
 
         if (strlen(palavra) <= MAXLETRAS_ECRAN) {
-            strcpy(dicionario[total_palavras], palavra);
+            strcpy_s(dicionario[total_palavras], sizeof(dicionario), palavra);
             total_palavras++;
         }
 
@@ -90,7 +90,7 @@ void gerar_permutacoes_mais_longa(int pos, int max_len) {
 
     if (pos > 0 && palavra_existe_no_dicionario(tentativa)) {
         if (strlen(tentativa) > strlen(melhor_palavra)) {
-            strcpy(melhor_palavra, tentativa);
+            strcpy_s(melhor_palavra, sizeof(melhor_palavra), tentativa);
         }
     }
 
@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    strncpy(player, argv[1], sizeof(player));
+    strncpy_s(player, argv[1], sizeof(player), _TRUNCATE);
 
     mensagem msg;
     carregar_dicionario("bot/dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
@@ -198,8 +198,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    strcpy(msg.tipo, TIPO_ENTRAR);
-    strncpy(msg.username, player, sizeof(msg.username));
+    strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_ENTRAR);
+    strncpy_s(msg.username, player, sizeof(msg.username), _TRUNCATE);
 
     if (Pipe_bot(msg) == 1) return 1;
 
@@ -215,9 +215,9 @@ int main(int argc, char* argv[]) {
         const char* palavra = escolher_palavra();
         ReleaseMutex(hmutex);
         if (palavra && letras_suficientes(palavra)) {
-            strcpy(msg.tipo, "palavra");
-            strncpy(msg.username, player, sizeof(msg.username));
-            strncpy(msg.palavra, palavra, sizeof(msg.palavra));
+            strcpy_s(msg.tipo, sizeof(msg.tipo), "palavra");
+            strncpy_s(msg.username, player, sizeof(msg.username), _TRUNCATE);
+            strncpy_s(msg.palavra, palavra, sizeof(msg.palavra), _TRUNCATE);
             msg.palavra[sizeof(msg.palavra) - 1] = '\0';  // segurança extra
             Pipe_bot(msg);
         }

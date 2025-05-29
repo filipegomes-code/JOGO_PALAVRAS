@@ -154,7 +154,7 @@ int addPlayer(const char* nome, HANDLE hpipe){
     
     WaitForSingleObject(hmutex, INFINITE);
     printf("[ARBITRO] Player %s adicionado.", nome);
-    strcpy(PLAYER_NAMES[cont_players], nome);
+    strcpy_s(PLAYER_NAMES[cont_players], sizeof(PLAYER_NAMES), nome);
     Pipe_player_threads[cont_players] = hpipe;
     pontuacao[cont_players] = 0;
     cont_players++;
@@ -195,7 +195,7 @@ void removePlayer(const char* nome){
             }
 
             for(int j = i; j < cont_players-1 ; j++  ){
-                strcpy(PLAYER_NAMES[j], PLAYER_NAMES[j + 1]);
+                strcpy_s(PLAYER_NAMES[j], sizeof(PLAYER_NAMES), PLAYER_NAMES[j + 1]);
                 pontuacao[j] = pontuacao[j+1];
                 Pipe_player_threads[j] = Pipe_player_threads[j+1];
             }
@@ -242,8 +242,8 @@ void Comandos(mensagem msg, HANDLE hpipe){
         WaitForSingleObject(hmutex, INFINITE);
         printf("[LISTA DE JOGADORES]:\n ");
         for(int i = 0; i < cont_players; i++){
-            strcat(lista, PLAYER_NAMES[i]);
-            strcat(lista, "\n");
+            strcat_s(lista, sizeof(lista), PLAYER_NAMES[i]);
+            strcat_s(lista, sizeof(lista), "\n");
         }
         ReleaseMutex(hmutex);
 
@@ -261,7 +261,7 @@ void Comandos(mensagem msg, HANDLE hpipe){
         for(int i = 0; i < cont_players; i++){
             char linha[50];
             snprintf(linha, sizeof(linha), "%s -> %d pontos\n", PLAYER_NAMES[i], pontuacao[i]);
-            strcat(pontos, linha);
+            strcat_s(pontos, sizeof(pontos), linha);
         }
         ReleaseMutex(hmutex);
         DWORD byteswrite;
@@ -327,13 +327,13 @@ void pontuacao_maior(){
     for (int i = 0; i < cont_players; i++) {
         if (pontuacao[i] > max_pontos) {
             max_pontos = pontuacao[i];
-            strcpy(novo_lider, PLAYER_NAMES[i]);
+            strcpy_s(novo_lider, sizeof(novo_lider), PLAYER_NAMES[i]);
         }
     }
 
     // Só avisa se o líder mudou
     if (strcmp(nome_lider, novo_lider) != 0) {
-        strcpy(nome_lider, novo_lider);
+        strcpy_s(nome_lider, sizeof(nome_lider), novo_lider);
         pontuacao_lider = max_pontos;
 
         char msg[150];
@@ -349,7 +349,7 @@ void anunciar_vencedor_encerrar(){
     for (int i = 0; i < cont_players; i++) {
         if (pontuacao[i] > max_pontos) {
             max_pontos = pontuacao[i];
-            strcpy(vencedor, PLAYER_NAMES[i]);
+            strcpy_s(vencedor,sizeof(vencedor), PLAYER_NAMES[i]);
         }
     }
 
@@ -519,7 +519,7 @@ DWORD WINAPI Thread_arbitro_comandos(LPVOID lpParam){
             char cmd[100];
             snprintf(cmd, sizeof(cmd), "bot.exe %s", nomebot); // ou ".\\bot.exe %s" se estiveres com problemas no caminho
 
-            BOOL success = CreateProcess(NULL, cmd, NULL, NULL, FALSE, 0 , NULL, NULL, &si, &pi);
+            BOOL success = CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0 , NULL, NULL, &si, &pi);
 
             if (success) {
                 CloseHandle(pi.hProcess);
