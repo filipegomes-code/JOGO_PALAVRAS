@@ -15,7 +15,7 @@ volatile int terminar = 0;
 HANDLE hMapFile;
 char* letras_partilhadas;
 
-void Info_comandos(){
+void Info_comandos() {
 
     printf("COMANDOS:\n");
     printf(":sair - Permite Jogador sair do jogo\n");
@@ -24,38 +24,38 @@ void Info_comandos(){
 
 }
 
-int Pipe_jogoUI(mensagem msg){
+int Pipe_jogoUI(mensagem msg) {
 
     HANDLE hPipeArbitro = CreateFileA("\\\\.\\pipe\\Pipe", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL); // este pipe entra em ligaçao com o pipe do arbitro para saber qual é o tipo de mensagem
 
-    if(hPipeArbitro == INVALID_HANDLE_VALUE){
+    if (hPipeArbitro == INVALID_HANDLE_VALUE) {
         printf(" erro na ligacao com arbitro ");
         return 1;
     }
-    
+
     DWORD byteswritten;
-    WriteFile(hPipeArbitro, &msg , sizeof(msg), &byteswritten, NULL);
+    WriteFile(hPipeArbitro, &msg, sizeof(msg), &byteswritten, NULL);
 
     char resposta_recebida[600]; //ReadFile precisa de memória editável, não pode ser constante (como TIPO_LIM_PLAYERS) que estava a tentar usar
     DWORD bytesread;
     BOOL success = ReadFile(hPipeArbitro, resposta_recebida, sizeof(resposta_recebida), &bytesread, NULL);
 
-    if (success && strcmp(resposta_recebida, TIPO_LIM_PLAYERS) == 0){
+    if (success && strcmp(resposta_recebida, TIPO_LIM_PLAYERS) == 0) {
         printf("N consegue entrar\n");
         CloseHandle(hPipeArbitro);
         return 1;
     }
 
-    if(success && strcmp(msg.tipo, TIPO_LISTA)== 0){
+    if (success && strcmp(msg.tipo, TIPO_LISTA) == 0) {
         printf("%s\n", resposta_recebida);
     }
 
-    if(success && strcmp(msg.tipo, TIPO_PONT)== 0){
+    if (success && strcmp(msg.tipo, TIPO_PONT) == 0) {
         printf("[TABELA PONTUACAO]: ");
         printf("%s\n", resposta_recebida);
     }
 
-    if(success && strcmp(msg.tipo, "palavra")==0){
+    if (success && strcmp(msg.tipo, "palavra") == 0) {
         printf("%s\n", resposta_recebida);
     }
 
@@ -63,7 +63,7 @@ int Pipe_jogoUI(mensagem msg){
     return 0;
 }
 
-DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
+DWORD WINAPI Thread_JogoUI(LPVOID lpParam) {
     char pipename[50];
     snprintf(pipename, sizeof(pipename), "\\\\.\\pipe\\Pipe_Comando_%s", player);
 
@@ -80,13 +80,13 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
         if (!connected) {
             CloseHandle(hPipe);
             continue;
-        } 
+        }
 
         char input[100];
         DWORD read;
         BOOL success;
 
-        while ( !terminar && (success = ReadFile(hPipe, input, sizeof(input), &read, NULL)) && read > 0) {
+        while (!terminar && (success = ReadFile(hPipe, input, sizeof(input), &read, NULL)) && read > 0) {
             input[read] = '\0';
 
             if (strcmp(input, TIPO_EXCLUIR) == 0) {
@@ -94,16 +94,18 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
                 terminar = 1;
                 CloseHandle(hPipe);
                 exit(0);
-            } else if (strcmp(input, TIPO_ENCERRAR) == 0) {
+            }
+            else if (strcmp(input, TIPO_ENCERRAR) == 0) {
                 printf("Jogo encerrado pelo arbitro.\n");
                 terminar = 1;
                 CloseHandle(hPipe);
                 exit(0);
-            } else if (strncmp(input, "LETRAS:", 7) != 0) {
+            }
+            else if (strncmp(input, "LETRAS:", 7) != 0) {
                 printf("\r\033[K%s\n", input); // Só imprime se não for uma linha de letras
                 printf(">");
                 fflush(stdout);
-            }            
+            }
         }
         CloseHandle(hPipe);
     }
@@ -111,7 +113,7 @@ DWORD WINAPI Thread_JogoUI(LPVOID lpParam){
 }
 
 DWORD WINAPI Thread_AtualizaLetras(LPVOID lpParam) {
-    char ult_letras[MAXLETRAS_ECRAN] = {0};
+    char ult_letras[MAXLETRAS_ECRAN] = { 0 };
 
     while (!terminar) {
         if (letras_partilhadas == NULL) break;
@@ -134,11 +136,11 @@ DWORD WINAPI Thread_AtualizaLetras(LPVOID lpParam) {
     return 0;
 }
 
-int main(int argc, char* argv[]){   
+int main(int argc, char* argv[]) {
 
     mensagem msg;
 
-    if(argc < 2 ){ 
+    if (argc < 2) {
         printf("uso incorreto de %s <username>", argv[0]);
         return 1;
     }
@@ -146,10 +148,10 @@ int main(int argc, char* argv[]){
     player = argv[1];
     printf("jogador %s entrou no jogo\n", player);
 
-    strcpy_s(msg.tipo , sizeof(msg.tipo), TIPO_ENTRAR); // usei strcpy pq eu controlo o tamanho da msg.tipo
+    strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_ENTRAR); // usei strcpy pq eu controlo o tamanho da msg.tipo
     strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE); // uso strncpy aqui pq o tamanho do username pode passar o tamanho do buffer e pode dar overflow. 
 
-    if(Pipe_jogoUI(msg) == 1){
+    if (Pipe_jogoUI(msg) == 1) {
         return 1;
     }
 
@@ -162,60 +164,63 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    letras_partilhadas = (char*) MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, MAXLETRAS_ECRAN);
+    letras_partilhadas = (char*)MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, MAXLETRAS_ECRAN);
     if (letras_partilhadas == NULL) {
         printf("Erro ao mapear memoria partilhada\n");
         return 1;
     }
 
     HANDLE hThreadComando = CreateThread(NULL, 0, Thread_JogoUI, NULL, 0, NULL);
-    if(hThreadComando == NULL){
+    if (hThreadComando == NULL) {
         printf("Erro a criar thread\n");
         return 1;
     }
 
     HANDLE hThreadLetras = CreateThread(NULL, 0, Thread_AtualizaLetras, NULL, 0, NULL);
-    if(hThreadLetras == NULL){
+    if (hThreadLetras == NULL) {
         printf("Erro a criar thread de letras\n");
         return 1;
     }
 
-    while(!terminar){
+    while (!terminar) {
         char input[30];
 
         putchar('>');
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = 0;
 
-        if(input[0] == ':'){
-            if(strcmp(input, TIPO_SAIR) == 0){
+        if (input[0] == ':') {
+            if (strcmp(input, TIPO_SAIR) == 0) {
                 printf("Saiste do Jogo\n");
-                terminar =1 ;
+                terminar = 1;
                 strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_SAIR);
                 strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
                 Pipe_jogoUI(msg);
                 exit(0);
-            }else if(strcmp(input, TIPO_LISTA)== 0){
+            }
+            else if (strcmp(input, TIPO_LISTA) == 0) {
                 printf("digitou o comando para ver a lista de jogadores\n");
                 strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_LISTA);
                 strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
                 Pipe_jogoUI(msg);
                 continue;
-            }else if(strcmp(input, TIPO_PONT)== 0){
+            }
+            else if (strcmp(input, TIPO_PONT) == 0) {
                 printf("comando para ver a pontuacao\n");
                 strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_PONT);
                 strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
                 Pipe_jogoUI(msg);
                 continue;
             }
-        }else{
+        }
+        else {
             strcpy_s(msg.tipo, sizeof(msg.tipo), "palavra");
-            strncpy_s(msg.username, sizeof(msg.username) ,player, _TRUNCATE);
-            strncpy_s(msg.palavra , sizeof(msg.palavra),input, _TRUNCATE);
+            strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
+            strncpy_s(msg.palavra, sizeof(msg.palavra), input, _TRUNCATE);
             Pipe_jogoUI(msg);
         }
 
-    } 
+    }
     WaitForSingleObject(hThreadComando, INFINITE);
     WaitForSingleObject(hThreadLetras, INFINITE);
 
@@ -225,8 +230,3 @@ int main(int argc, char* argv[]){
     CloseHandle(hMapFile);
     return 0;
 }
-
-
-
-
-

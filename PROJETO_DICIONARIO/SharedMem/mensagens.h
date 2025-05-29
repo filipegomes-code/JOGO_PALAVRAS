@@ -20,7 +20,7 @@ typedef struct
     char palavra[30];
 } mensagem;
 
-typedef struct 
+typedef struct
 {
     HANDLE hpipe;
     mensagem msg_thread;

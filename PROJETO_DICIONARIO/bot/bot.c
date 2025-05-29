@@ -18,7 +18,7 @@ char player[50];
 HANDLE hmutex;
 volatile int terminar = 0;
 
-char letras_visiveis[MAXLETRAS_ECRAN+1];
+char letras_visiveis[MAXLETRAS_ECRAN + 1];
 char dicionario[MAX_PALAVRAS][MAX_LETRAS];
 
 int total_palavras = 0;
@@ -34,7 +34,7 @@ char melhor_palavra[MAXLETRAS_ECRAN + 1] = "";
 void carregar_dicionario(const char* filename) {
     FILE* file = fopen(filename, "r");
     if (!file) {
-        perror("Erro ao abrir dicionario");
+        fprintf(stderr, "[BOT] ERRO AO ABRIR: dicionario_pt_eng.txt\n");
         exit(1);
     }
 
@@ -44,7 +44,7 @@ void carregar_dicionario(const char* filename) {
         palavra[strcspn(palavra, "\r\n")] = '\0';  // remove \n ou \r\n
 
         if (strlen(palavra) <= MAXLETRAS_ECRAN) {
-            strcpy_s(dicionario[total_palavras], sizeof(dicionario), palavra);
+            strcpy_s(dicionario[total_palavras], MAX_LETRAS, palavra);
             total_palavras++;
         }
 
@@ -172,7 +172,7 @@ DWORD WINAPI Thread_Comando(LPVOID lpParam) {
 
 int main(int argc, char* argv[]) {
     srand((unsigned)time(NULL));
-    if(argc !=2){
+    if (argc != 2) {
         printf("uso incorreto do bot");
         return 1;
     }
@@ -180,9 +180,14 @@ int main(int argc, char* argv[]) {
     strncpy_s(player, sizeof(player), argv[1], _TRUNCATE);
 
     mensagem msg;
-    carregar_dicionario("dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
 
+    carregar_dicionario("dicionario_pt_eng.txt"); // ver se posso mudar oq está antes do dicionario
+    printf("ola");
     hmutex = CreateMutexA(NULL, FALSE, "Global\\geral");
+    if (hmutex == NULL) {
+        printf("[BOT] ERRO: Mutex não foi criado!\n");
+        return 1;
+    }
 
     // conecta à mem partilhada (mapa) , foi criado o mapa no arbitro.
     HANDLE hMapFile = OpenFileMappingA(FILE_MAP_READ, FALSE, "Global\\LetrasPartilhadas");
@@ -191,20 +196,22 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     // funciona como uma lanterna a apontar para um quadro escuro escrito (revela oq esta no quadro).
-    letras_partilhadas = (char*) MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, MAXLETRAS_ECRAN);
+    letras_partilhadas = (char*)MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, MAXLETRAS_ECRAN);
     if (letras_partilhadas == NULL) {
         printf("BOT: erro ao mapear memória partilhada\n");
         CloseHandle(hMapFile);
         return 1;
     }
-
+    
     strcpy_s(msg.tipo, sizeof(msg.tipo), TIPO_ENTRAR);
     strncpy_s(msg.username, sizeof(msg.username), player, _TRUNCATE);
-
+    
     if (Pipe_bot(msg) == 1) return 1;
 
     HANDLE hThread = CreateThread(NULL, 0, Thread_Comando, NULL, 0, NULL);
     if (!hThread) return 1;
+
+    printf("[BOT] Entrou no ciclo principal. Jogador: %s\n", player);
 
     while (!terminar) {
         WaitForSingleObject(hmutex, INFINITE);
@@ -221,7 +228,7 @@ int main(int argc, char* argv[]) {
             msg.palavra[sizeof(msg.palavra) - 1] = '\0';  // segurança extra
             Pipe_bot(msg);
         }
-        Sleep(5000 + rand()%29000);
+        Sleep(5000 + rand() % 29000);
     }
 
     WaitForSingleObject(hThread, INFINITE);
